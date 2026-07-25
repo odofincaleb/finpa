@@ -1,0 +1,23 @@
+# Relative to git repository root (EAS uploads from git root)
+node_modules/
+**/node_modules/
+.expo/
+**/.expo/
+dist/
+**/dist/
+
+# Not needed for mobile APK
+apps/backend/
+supabase/
+
+# Secrets
+**/.env
+**/.env.*
+!**/.env.example
+apps/mobile/.env
+
+# Tooling noise
+.cursor/
+**/agent-transcripts/
+**/*.md
+!apps/mobile/README.md

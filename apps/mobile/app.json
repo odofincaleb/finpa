@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "FINPA",
+    "slug": "finpa",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A192F"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.finpa.mobile",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "FINPA uses speech recognition so you can speak expenses into chat.",
+        "NSMicrophoneUsageDescription": "FINPA uses the microphone so you can speak expenses into chat."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A192F",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "app.finpa.mobile",
+      "versionCode": 2,
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow FINPA to use the microphone so you can speak expenses.",
+          "speechRecognitionPermission": "Allow FINPA to use speech recognition so you can speak expenses.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "65ee7ad7-fda8-464e-ac64-be096fc4a902"
+      }
+    },
+    "owner": "fiddyboss"
+  }
+}

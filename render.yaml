@@ -1,0 +1,26 @@
+# Deploy FINPA API: https://dashboard.render.com → New → Blueprint → connect this repo
+services:
+  - type: web
+    name: finpa-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./apps/backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: meta-llama/llama-3.3-70b-instruct:free
+      - key: ADMIN_SECRET
+        sync: false
+      - key: SUPERADMIN_EMAILS
+        sync: false
