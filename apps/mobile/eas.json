@@ -12,6 +12,7 @@
         "buildType": "apk"
       },
       "env": {
+        "EXPO_PUBLIC_API_URL": "https://finpa-6587.onbelmo.uk",
         "EXPO_PUBLIC_SUPABASE_URL": "https://eazefnknevdjdvktwnnb.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhemVmbmtuZXZkamR2a3R3bm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwMDIyMTgsImV4cCI6MjEwMDU3ODIxOH0.bHRGF7gx3ucf8x8mDt9Dgyf1hVvmErK3elMHT5PVJ7g"
       }
@@ -22,6 +23,7 @@
         "buildType": "apk"
       },
       "env": {
+        "EXPO_PUBLIC_API_URL": "https://finpa-6587.onbelmo.uk",
         "EXPO_PUBLIC_SUPABASE_URL": "https://eazefnknevdjdvktwnnb.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhemVmbmtuZXZkamR2a3R3bm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwMDIyMTgsImV4cCI6MjEwMDU3ODIxOH0.bHRGF7gx3ucf8x8mDt9Dgyf1hVvmErK3elMHT5PVJ7g"
       }
@@ -31,6 +33,7 @@
         "buildType": "app-bundle"
       },
       "env": {
+        "EXPO_PUBLIC_API_URL": "https://finpa-6587.onbelmo.uk",
         "EXPO_PUBLIC_SUPABASE_URL": "https://eazefnknevdjdvktwnnb.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhemVmbmtuZXZkamR2a3R3bm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwMDIyMTgsImV4cCI6MjEwMDU3ODIxOH0.bHRGF7gx3ucf8x8mDt9Dgyf1hVvmErK3elMHT5PVJ7g"
       }
