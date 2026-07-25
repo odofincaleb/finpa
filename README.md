@@ -124,11 +124,14 @@ Scan the QR code in **Expo Go**. Demo API URL / Demo PIN chrome only appears in 
 
 Supabase handles **auth** (and stores data). The phone still needs a **public FINPA backend** for PIN redeem, chat/AI, budgets, and ledger — a PC LAN IP will not work for users on mobile data.
 
-1. **Host the API** (e.g. Render Blueprint via `render.yaml`):
-   - Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `ADMIN_SECRET`, `SUPERADMIN_EMAILS`
-   - Confirm `https://YOUR-SERVICE.onrender.com/health` returns `"supabase": true`
+1. **Host the API** on [Belmo](https://dashboard.belmo.io) (or cPanel Node.js / similar):
+   - Connect GitHub → deploy repo `odofincaleb/finpa` as an **API** service
+   - **Root directory:** `apps/backend`
+   - **Build:** `npm install && npm run build` · **Start:** `npm start`
+   - Env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `ADMIN_SECRET`, `SUPERADMIN_EMAILS` (Belmo sets `PORT`)
+   - Confirm `https://YOUR-SERVICE.belmo…/health` returns `"supabase": true`
 2. **Point the app at that API** (Expo → Project → Environment variables, for `preview` / `production`):
-   - `EXPO_PUBLIC_API_URL=https://YOUR-SERVICE.onrender.com`
+   - `EXPO_PUBLIC_API_URL=https://YOUR-BELMO-URL`
    - Supabase URL + anon key are already in `eas.json`
 3. Rebuild:
 
