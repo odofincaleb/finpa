@@ -92,7 +92,12 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 
 export function requireSubscription(req: Request, _res: Response, next: NextFunction) {
   try {
-    const { profile } = req as AuthedRequest;
+    const { profile, userEmail } = req as AuthedRequest;
+    // Superadmins bypass PIN gate (same as mobile Activate screen)
+    if (isSuperAdminEmail(userEmail || profile.email)) {
+      next();
+      return;
+    }
     if (!isActive(profile.subscription_expires_at)) {
       throw new AppError(
         403,

@@ -52,6 +52,7 @@ export function HomeScreen() {
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<EntryMode>("chat");
   const [manualBusy, setManualBusy] = useState(false);
+  const [micListening, setMicListening] = useState(false);
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(
     () => new Set(),
   );
@@ -183,6 +184,7 @@ export function HomeScreen() {
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          scrollEnabled={!micListening}
         >
           <Pressable
             style={styles.summary}
@@ -280,6 +282,7 @@ export function HomeScreen() {
                 }
                 sending={sending}
                 embedded
+                onListeningChange={setMicListening}
               />
             </View>
           )}

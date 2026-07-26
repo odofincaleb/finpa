@@ -17,9 +17,16 @@ type Props = {
   sending?: boolean;
   /** When true, sits inside the home scroll (not a sticky footer). */
   embedded?: boolean;
+  /** Parent can lock ScrollView while holding the mic */
+  onListeningChange?: (listening: boolean) => void;
 };
 
-export function ChatInputBar({ onSend, sending, embedded }: Props) {
+export function ChatInputBar({
+  onSend,
+  sending,
+  embedded,
+  onListeningChange,
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [text, setText] = useState("");
@@ -27,6 +34,10 @@ export function ChatInputBar({ onSend, sending, embedded }: Props) {
     setText("");
     onSend(finalText);
   });
+
+  useEffect(() => {
+    onListeningChange?.(listening);
+  }, [listening, onListeningChange]);
 
   useEffect(() => {
     if (listening && transcript) {
@@ -61,6 +72,8 @@ export function ChatInputBar({ onSend, sending, embedded }: Props) {
         <Pressable
           onPressIn={start}
           onPressOut={stop}
+          delayLongPress={200}
+          hitSlop={12}
           style={[styles.mic, listening && styles.micActive]}
           accessibilityLabel="Hold to talk"
         >
