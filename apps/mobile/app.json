@@ -28,7 +28,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "app.finpa.mobile",
-      "versionCode": 5,
+      "versionCode": 6,
       "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.RECORD_AUDIO"
@@ -39,6 +39,7 @@
     },
     "plugins": [
       "expo-font",
+      "expo-sharing",
       [
         "expo-speech-recognition",
         {

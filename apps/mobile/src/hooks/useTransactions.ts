@@ -8,6 +8,12 @@ export function useTransactions() {
     addTransactions,
     mergeOptimistic,
     refreshTick,
+    createManualTransaction,
+    updateTransaction,
+    deleteTransaction,
+    isOnline,
+    pendingSyncCount,
+    flushSyncQueue,
   } = useFinance();
 
   return {
@@ -17,5 +23,11 @@ export function useTransactions() {
     mergeOptimistic,
     addTransactions,
     refreshTick,
+    createManualTransaction,
+    updateTransaction,
+    deleteTransaction,
+    isOnline,
+    pendingSyncCount,
+    flushSyncQueue,
   };
 }

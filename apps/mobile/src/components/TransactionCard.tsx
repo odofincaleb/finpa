@@ -35,6 +35,9 @@ export function TransactionCard({ item, animate }: Props) {
         <Text style={styles.meta} numberOfLines={1}>
           {item.category}
           {item.payment_method ? ` · ${item.payment_method}` : ""}
+          {item.syncStatus === "pending" || item.id.startsWith("local-")
+            ? " · Pending sync"
+            : ""}
         </Text>
       </View>
       <Text style={[styles.amount, isIncome && styles.income]}>

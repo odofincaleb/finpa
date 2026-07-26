@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,11 +11,17 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useNavigation } from "@react-navigation/native";
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react-native";
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+} from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { useFinance } from "../context/FinanceContext";
 import { useTheme } from "../context/ThemeContext";
 import { formatMoney } from "../lib/currency";
+import { shareMonthStatementCsv } from "../lib/exportMonthCsv";
 import { computeMonthSummary } from "../lib/monthSummary";
 import type { BudgetActualRow } from "../types";
 import type { ThemeColors } from "../theme/colors";
@@ -39,6 +46,7 @@ export function SummaryScreen() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [monthBudgets, setMonthBudgets] = useState<BudgetActualRow[]>(budgetRows);
   const [loadingMonth, setLoadingMonth] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [fadeKey, setFadeKey] = useState(0);
 
   const isCurrentMonth =
@@ -86,6 +94,20 @@ export function SummaryScreen() {
 
   const maxCategory = summary.byCategory[0]?.amount ?? 0;
 
+  const downloadStatement = async () => {
+    setExporting(true);
+    try {
+      await shareMonthStatementCsv(summary, transactions, year, month);
+    } catch (err) {
+      Alert.alert(
+        "Export failed",
+        err instanceof Error ? err.message : "Could not share statement",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.root} edges={["top", "bottom"]}>
       <StatusBar style={colors.statusBar} />
@@ -96,6 +118,21 @@ export function SummaryScreen() {
         </Pressable>
 
         <Text style={styles.title}>Monthly summary</Text>
+
+        <Pressable
+          style={styles.exportBtn}
+          onPress={() => void downloadStatement()}
+          disabled={exporting || loadingMonth}
+        >
+          {exporting ? (
+            <ActivityIndicator color={colors.ink} size="small" />
+          ) : (
+            <>
+              <Download size={16} color={colors.ink} />
+              <Text style={styles.exportText}>Download CSV statement</Text>
+            </>
+          )}
+        </Pressable>
 
         <View style={styles.monthNav}>
           <Pressable
@@ -251,7 +288,22 @@ function createStyles(c: ThemeColors) {
       fontFamily: "Fraunces_600SemiBold",
       fontSize: 28,
       color: c.mist,
-      marginBottom: 16,
+      marginBottom: 12,
+    },
+    exportBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      backgroundColor: c.sageBright,
+      borderRadius: 12,
+      paddingVertical: 12,
+      marginBottom: 18,
+    },
+    exportText: {
+      color: c.ink,
+      fontFamily: "DMSans_700Bold",
+      fontSize: 14,
     },
     monthNav: {
       flexDirection: "row",

@@ -35,7 +35,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: {
       ...config.android,
       // Allow http only for local/LAN dev; production should use https
-      usesCleartextTraffic: !apiUrl || apiUrl.startsWith("http://"),
+      ...( {
+        usesCleartextTraffic: !apiUrl || apiUrl.startsWith("http://"),
+      } as ExpoConfig["android"]),
     },
     extra: {
       ...config.extra,

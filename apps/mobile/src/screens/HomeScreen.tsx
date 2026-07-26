@@ -47,7 +47,13 @@ export function HomeScreen() {
   const month = now.getMonth() + 1;
   const currency = profile?.preferred_currency ?? "NGN";
 
-  const { transactions, addTransactions } = useTransactions();
+  const {
+    transactions,
+    addTransactions,
+    createManualTransaction,
+    isOnline,
+    pendingSyncCount,
+  } = useTransactions();
   const budgets = useBudgets(year, month);
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<EntryMode>("chat");
@@ -114,15 +120,8 @@ export function HomeScreen() {
   }) => {
     setManualBusy(true);
     try {
-      const message =
-        input.type === "income"
-          ? `Received ${input.amount} income from ${input.merchant}${
-              input.payment_method ? ` via ${input.payment_method}` : ""
-            }${input.notes ? `. ${input.notes}` : ""}`
-          : `Spent ${input.amount} on ${input.merchant} for ${input.category}${
-              input.payment_method ? ` with ${input.payment_method}` : ""
-            }${input.notes ? `. ${input.notes}` : ""}`;
-      await send(message);
+      const tx = await createManualTransaction(input);
+      setHighlightIds(new Set([tx.id]));
     } finally {
       setManualBusy(false);
     }
@@ -240,13 +239,21 @@ export function HomeScreen() {
             </Pressable>
           </View>
 
+          <Text style={styles.onlineHint}>
+            {isOnline
+              ? pendingSyncCount > 0
+                ? `Online · syncing ${pendingSyncCount} change${pendingSyncCount === 1 ? "" : "s"}…`
+                : "Online"
+              : "Offline · Manual entry works · Chat/Ask need internet"}
+          </Text>
+
           {mode === "manual" ? (
             <View style={styles.entryBlock}>
               <ManualEntryForm
                 currency={currency}
                 expenseCategories={budgets.expenseCategories}
-                submitting={manualBusy || sending}
-                onSubmit={submitManual}
+                submitting={manualBusy}
+                onSubmit={(input) => void submitManual(input)}
               />
             </View>
           ) : (
@@ -281,6 +288,8 @@ export function HomeScreen() {
                   void send(msg, { askOnly: mode === "ask" })
                 }
                 sending={sending}
+                disabled={!isOnline}
+                disabledHint="Offline — switch to Manual to log expenses"
                 embedded
                 onListeningChange={setMicListening}
               />
@@ -368,6 +377,12 @@ function createStyles(c: ThemeColors) {
     },
     alertsSlot: {
       marginTop: 16,
+    },
+    onlineHint: {
+      marginTop: 8,
+      color: c.mistMuted,
+      fontFamily: "DMSans_400Regular",
+      fontSize: 11,
     },
     modeRow: {
       marginTop: 20,

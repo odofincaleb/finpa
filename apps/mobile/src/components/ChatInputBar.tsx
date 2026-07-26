@@ -15,6 +15,8 @@ import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
 type Props = {
   onSend: (message: string) => void;
   sending?: boolean;
+  disabled?: boolean;
+  disabledHint?: string;
   /** When true, sits inside the home scroll (not a sticky footer). */
   embedded?: boolean;
   /** Parent can lock ScrollView while holding the mic */
@@ -24,6 +26,8 @@ type Props = {
 export function ChatInputBar({
   onSend,
   sending,
+  disabled,
+  disabledHint,
   embedded,
   onListeningChange,
 }: Props) {
@@ -47,42 +51,58 @@ export function ChatInputBar({
 
   const submit = () => {
     const value = text.trim();
-    if (!value || sending) return;
+    if (!value || sending || disabled) return;
     setText("");
     onSend(value);
   };
 
   return (
     <View style={[styles.wrap, embedded && styles.wrapEmbedded]}>
-      <View style={[styles.bar, listening && styles.barListening]}>
+      <View
+        style={[
+          styles.bar,
+          listening && styles.barListening,
+          disabled && styles.barDisabled,
+        ]}
+      >
         <TextInput
           value={text}
           onChangeText={setText}
           placeholder={
-            listening
-              ? "Listening…"
-              : "Spent ₦4500 on fuel… or Received ₦250000 salary"
+            disabled
+              ? "Connect to use AI chat"
+              : listening
+                ? "Listening…"
+                : "Spent ₦4500 on fuel… or Received ₦250000 salary"
           }
           placeholderTextColor={colors.mistMuted}
           style={styles.input}
           multiline
-          editable={!sending}
+          editable={!sending && !disabled}
           onSubmitEditing={submit}
         />
         <Pressable
-          onPressIn={start}
-          onPressOut={stop}
+          onPressIn={disabled ? undefined : start}
+          onPressOut={disabled ? undefined : stop}
           delayLongPress={200}
           hitSlop={12}
-          style={[styles.mic, listening && styles.micActive]}
+          disabled={disabled}
+          style={[
+            styles.mic,
+            listening && styles.micActive,
+            disabled && styles.sendDisabled,
+          ]}
           accessibilityLabel="Hold to talk"
         >
           <Mic size={20} color={listening ? colors.ink : colors.mist} />
         </Pressable>
         <Pressable
           onPress={submit}
-          disabled={sending || !text.trim()}
-          style={[styles.send, (!text.trim() || sending) && styles.sendDisabled]}
+          disabled={disabled || sending || !text.trim()}
+          style={[
+            styles.send,
+            (disabled || !text.trim() || sending) && styles.sendDisabled,
+          ]}
         >
           {sending ? (
             <ActivityIndicator color={colors.ink} size="small" />
@@ -91,7 +111,11 @@ export function ChatInputBar({
           )}
         </Pressable>
       </View>
-      {listening ? (
+      {disabled ? (
+        <Text style={styles.hint}>
+          {disabledHint || "Offline — switch to Manual to log expenses"}
+        </Text>
+      ) : listening ? (
         <Text style={styles.hint}>Release to send · hold mic to talk</Text>
       ) : (
         <Text style={styles.hint}>
@@ -132,6 +156,9 @@ function createStyles(c: ThemeColors) {
     },
     barListening: {
       borderColor: c.sage,
+    },
+    barDisabled: {
+      opacity: 0.75,
     },
     input: {
       flex: 1,

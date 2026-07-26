@@ -4,15 +4,34 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { fetchBudgets, fetchTransactions, saveBudgets } from "../lib/api";
+import * as Network from "expo-network";
+import { AppState, type AppStateStatus } from "react-native";
+import {
+  createTransactionApi,
+  deleteTransactionApi,
+  fetchBudgets,
+  fetchTransactions,
+  saveBudgets,
+  updateTransactionApi,
+  type TransactionWriteInput,
+} from "../lib/api";
+import {
+  enqueueSync,
+  isLocalId,
+  loadSyncQueue,
+  saveSyncQueue,
+  type SyncQueueItem,
+} from "../lib/syncQueue";
 import { useAuth } from "./AuthContext";
 import {
   CATEGORIES,
   type BudgetActualRow,
   type Transaction,
+  type TransactionType,
 } from "../types";
 
 const TX_KEY = "finpa.tx";
@@ -110,6 +129,16 @@ function recomputeActuals(
   return { rows, incomeTotal };
 }
 
+export type ManualTransactionInput = {
+  amount: number;
+  type: TransactionType;
+  category: string;
+  merchant: string;
+  payment_method: string;
+  notes: string;
+  created_at?: string;
+};
+
 type FinanceContextValue = {
   transactions: Transaction[];
   budgetRows: BudgetActualRow[];
@@ -118,9 +147,18 @@ type FinanceContextValue = {
   loadingTx: boolean;
   loadingBudgets: boolean;
   refreshTick: number;
+  isOnline: boolean;
+  pendingSyncCount: number;
   refresh: () => Promise<void>;
+  flushSyncQueue: () => Promise<void>;
   addTransactions: (rows: Transaction[]) => void;
   mergeOptimistic: (rows: Transaction[]) => void;
+  createManualTransaction: (input: ManualTransactionInput) => Promise<Transaction>;
+  updateTransaction: (
+    id: string,
+    patch: Partial<ManualTransactionInput>,
+  ) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
   upsertBudget: (category: string, amount: number) => Promise<void>;
   addCategory: (name: string) => Promise<{ ok: boolean; error?: string }>;
   refreshBudgets: () => Promise<void>;
@@ -149,6 +187,10 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const [loadingTx, setLoadingTx] = useState(true);
   const [loadingBudgets, setLoadingBudgets] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const flushingRef = useRef(false);
+  const idMapRef = useRef<Map<string, string>>(new Map());
 
   const expenseCategories = useMemo(
     () =>
@@ -201,6 +243,11 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const refreshPendingCount = useCallback(async () => {
+    const q = await loadSyncQueue();
+    setPendingSyncCount(q.length);
+  }, []);
+
   const loadLocalTx = useCallback(async () => {
     try {
       const raw = await AsyncStorage.getItem(TX_KEY);
@@ -251,6 +298,123 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     [year, month, currency],
   );
 
+  const ensureCategoriesFromTxs = useCallback(
+    (rows: Transaction[]) => {
+      const newCats = rows
+        .filter((r) => r.type === "expense")
+        .map((r) => normalizeCategoryName(String(r.category)))
+        .filter(Boolean);
+      if (!newCats.length) return;
+      setBudgetBase((prev) =>
+        seedBudgetRows(
+          currency,
+          buildCategoryList(customCategories, [
+            ...prev.map((p) => p.category),
+            ...newCats,
+          ]),
+          prev,
+        ),
+      );
+    },
+    [currency, customCategories],
+  );
+
+  const addTransactions = useCallback(
+    (rows: Transaction[]) => {
+      if (!rows.length) return;
+      setTransactions((prev) => {
+        const ids = new Set(rows.map((r) => r.id));
+        const rest = prev.filter((p) => !ids.has(p.id));
+        const next = [...rows, ...rest].sort((a, b) =>
+          b.created_at.localeCompare(a.created_at),
+        );
+        void persistTx(next);
+        return next;
+      });
+      ensureCategoriesFromTxs(rows);
+      setRefreshTick((n) => n + 1);
+    },
+    [persistTx, ensureCategoriesFromTxs],
+  );
+
+  const replaceLocalWithServer = useCallback(
+    (localId: string, serverTx: Transaction) => {
+      idMapRef.current.set(localId, serverTx.id);
+      setTransactions((prev) => {
+        const next = prev
+          .filter((t) => t.id !== localId)
+          .map((t) => (t.id === serverTx.id ? { ...serverTx, syncStatus: "synced" as const } : t));
+        if (!next.some((t) => t.id === serverTx.id)) {
+          next.unshift({ ...serverTx, syncStatus: "synced" });
+        }
+        const sorted = next.sort((a, b) =>
+          b.created_at.localeCompare(a.created_at),
+        );
+        void persistTx(sorted);
+        return sorted;
+      });
+      setRefreshTick((n) => n + 1);
+    },
+    [persistTx],
+  );
+
+  const flushSyncQueue = useCallback(async () => {
+    if (!token || flushingRef.current) return;
+    flushingRef.current = true;
+    try {
+      let queue = await loadSyncQueue();
+      if (!queue.length) {
+        setPendingSyncCount(0);
+        return;
+      }
+
+      const remaining: SyncQueueItem[] = [];
+      for (const item of queue) {
+        try {
+          if (item.op === "create") {
+            const { transaction } = await createTransactionApi(token, {
+              ...item.payload,
+              client_id: item.localId,
+            });
+            replaceLocalWithServer(item.localId, transaction);
+          } else if (item.op === "update") {
+            const serverId =
+              item.serverId ||
+              idMapRef.current.get(item.localId) ||
+              (!isLocalId(item.localId) ? item.localId : undefined);
+            if (!serverId || isLocalId(serverId)) {
+              remaining.push(item);
+              continue;
+            }
+            const { transaction } = await updateTransactionApi(
+              token,
+              serverId,
+              item.payload,
+            );
+            replaceLocalWithServer(serverId, transaction);
+          } else if (item.op === "delete") {
+            const serverId =
+              item.serverId ||
+              idMapRef.current.get(item.localId) ||
+              (!isLocalId(item.localId) ? item.localId : undefined);
+            if (!serverId || isLocalId(serverId)) {
+              // create was cancelled or never synced — already removed locally
+              continue;
+            }
+            await deleteTransactionApi(token, serverId);
+          }
+        } catch {
+          remaining.push(item);
+        }
+      }
+
+      await saveSyncQueue(remaining);
+      setPendingSyncCount(remaining.length);
+    } finally {
+      flushingRef.current = false;
+    }
+  }, [token, replaceLocalWithServer]);
+
   const refresh = useCallback(async () => {
     if (!token) {
       setLoadingTx(false);
@@ -269,7 +433,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const { transactions: remote } = await fetchTransactions(token);
-      nextTx = remote;
+      nextTx = remote.map((t) => ({ ...t, syncStatus: "synced" as const }));
     } catch {
       nextTx = await loadLocalTx();
     }
@@ -288,12 +452,16 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const local = await loadLocalTx();
     const remoteIds = new Set(nextTx.map((t) => t.id));
     const localOnly = local.filter(
-      (t) => t.id.startsWith("local-") || !remoteIds.has(t.id),
+      (t) =>
+        (t.id.startsWith("local-") || t.syncStatus === "pending") &&
+        !remoteIds.has(t.id),
     );
     const mergedMap = new Map<string, Transaction>();
     for (const t of nextTx) mergedMap.set(t.id, t);
     for (const t of localOnly) {
-      if (!mergedMap.has(t.id)) mergedMap.set(t.id, t);
+      if (!mergedMap.has(t.id)) {
+        mergedMap.set(t.id, { ...t, syncStatus: t.syncStatus ?? "pending" });
+      }
     }
     const merged = Array.from(mergedMap.values()).sort((a, b) =>
       b.created_at.localeCompare(a.created_at),
@@ -303,9 +471,14 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     setBudgetBase(nextBudgets);
     await persistTx(merged);
     await persistBudgets(nextBudgets, year, month);
+    await refreshPendingCount();
     setRefreshTick((n) => n + 1);
     setLoadingTx(false);
     setLoadingBudgets(false);
+
+    if (isOnline) {
+      await flushSyncQueue();
+    }
   }, [
     token,
     currency,
@@ -316,7 +489,46 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     loadCustomCategories,
     persistTx,
     persistBudgets,
+    refreshPendingCount,
+    flushSyncQueue,
+    isOnline,
   ]);
+
+  const checkNetwork = useCallback(async () => {
+    try {
+      const state = await Network.getNetworkStateAsync();
+      const online = Boolean(state.isConnected && state.isInternetReachable !== false);
+      setIsOnline(online);
+      return online;
+    } catch {
+      setIsOnline(true);
+      return true;
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkNetwork();
+    const sub = Network.addNetworkStateListener((state) => {
+      const online = Boolean(state.isConnected && state.isInternetReachable !== false);
+      setIsOnline(online);
+      if (online) {
+        void flushSyncQueue().then(() => refresh());
+      }
+    });
+    return () => sub.remove();
+  }, [checkNetwork, flushSyncQueue, refresh]);
+
+  useEffect(() => {
+    const onAppState = (status: AppStateStatus) => {
+      if (status === "active") {
+        void checkNetwork().then((online) => {
+          if (online) void flushSyncQueue().then(() => refresh());
+        });
+      }
+    };
+    const sub = AppState.addEventListener("change", onAppState);
+    return () => sub.remove();
+  }, [checkNetwork, flushSyncQueue, refresh]);
 
   useEffect(() => {
     refresh().catch(() => {
@@ -325,38 +537,164 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     });
   }, [refresh, userId]);
 
-  const addTransactions = useCallback(
-    (rows: Transaction[]) => {
-      if (!rows.length) return;
+  const createManualTransaction = useCallback(
+    async (input: ManualTransactionInput) => {
+      const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const createdAt = input.created_at || new Date().toISOString();
+      const payload: TransactionWriteInput = {
+        amount: input.amount,
+        currency,
+        category: input.type === "income" ? "Income" : input.category,
+        merchant: input.merchant || (input.type === "income" ? "Income" : input.category),
+        type: input.type,
+        payment_method: input.payment_method || "",
+        notes: input.notes || "",
+        created_at: createdAt,
+        client_id: localId,
+      };
+
+      const localTx: Transaction = {
+        id: localId,
+        user_id: userId,
+        amount: payload.amount,
+        currency: payload.currency || currency,
+        category: payload.category,
+        merchant: payload.merchant,
+        type: payload.type,
+        payment_method: payload.payment_method || "",
+        notes: payload.notes || "",
+        created_at: createdAt,
+        syncStatus: "pending",
+      };
+
+      addTransactions([localTx]);
+
+      const online = await checkNetwork();
+      if (online && token) {
+        try {
+          const { transaction } = await createTransactionApi(token, payload);
+          replaceLocalWithServer(localId, transaction);
+          return { ...transaction, syncStatus: "synced" as const };
+        } catch {
+          await enqueueSync({ op: "create", localId, payload });
+          await refreshPendingCount();
+          return localTx;
+        }
+      }
+
+      await enqueueSync({ op: "create", localId, payload });
+      await refreshPendingCount();
+      return localTx;
+    },
+    [
+      currency,
+      userId,
+      token,
+      addTransactions,
+      checkNetwork,
+      replaceLocalWithServer,
+      refreshPendingCount,
+    ],
+  );
+
+  const updateTransaction = useCallback(
+    async (id: string, patch: Partial<ManualTransactionInput>) => {
+      const payload: Partial<TransactionWriteInput> = {};
+      if (patch.amount != null) payload.amount = patch.amount;
+      if (patch.category != null) payload.category = patch.category;
+      if (patch.merchant != null) payload.merchant = patch.merchant;
+      if (patch.type != null) {
+        payload.type = patch.type;
+        if (patch.type === "income") payload.category = "Income";
+      }
+      if (patch.payment_method != null) payload.payment_method = patch.payment_method;
+      if (patch.notes != null) payload.notes = patch.notes;
+      if (patch.created_at != null) payload.created_at = patch.created_at;
+
       setTransactions((prev) => {
-        const ids = new Set(rows.map((r) => r.id));
-        const rest = prev.filter((p) => !ids.has(p.id));
-        const next = [...rows, ...rest].sort((a, b) =>
-          b.created_at.localeCompare(a.created_at),
+        const next = prev.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                ...payload,
+                category:
+                  payload.type === "income"
+                    ? "Income"
+                    : (payload.category ?? t.category),
+                syncStatus: "pending" as const,
+              }
+            : t,
         );
         void persistTx(next);
         return next;
       });
-      // Ensure expense categories from new txs appear in budget table
-      const newCats = rows
-        .filter((r) => r.type === "expense")
-        .map((r) => normalizeCategoryName(String(r.category)))
-        .filter(Boolean);
-      if (newCats.length) {
-        setBudgetBase((prev) =>
-          seedBudgetRows(
-            currency,
-            buildCategoryList(customCategories, [
-              ...prev.map((p) => p.category),
-              ...newCats,
-            ]),
-            prev,
-          ),
-        );
-      }
       setRefreshTick((n) => n + 1);
+
+      const online = await checkNetwork();
+      const serverId = idMapRef.current.get(id) || id;
+
+      if (online && token && !isLocalId(serverId)) {
+        try {
+          const { transaction } = await updateTransactionApi(token, serverId, payload);
+          replaceLocalWithServer(serverId, transaction);
+          return;
+        } catch {
+          // queue below
+        }
+      }
+
+      await enqueueSync({
+        op: "update",
+        localId: id,
+        serverId: isLocalId(serverId) ? undefined : serverId,
+        payload,
+      });
+      await refreshPendingCount();
     },
-    [persistTx, currency, customCategories],
+    [
+      token,
+      persistTx,
+      checkNetwork,
+      replaceLocalWithServer,
+      refreshPendingCount,
+    ],
+  );
+
+  const deleteTransaction = useCallback(
+    async (id: string) => {
+      setTransactions((prev) => {
+        const next = prev.filter((t) => t.id !== id);
+        void persistTx(next);
+        return next;
+      });
+      setRefreshTick((n) => n + 1);
+
+      const online = await checkNetwork();
+      const serverId = idMapRef.current.get(id) || id;
+
+      if (isLocalId(id) && !idMapRef.current.has(id)) {
+        await enqueueSync({ op: "delete", localId: id });
+        await refreshPendingCount();
+        return;
+      }
+
+      if (online && token && !isLocalId(serverId)) {
+        try {
+          await deleteTransactionApi(token, serverId);
+          return;
+        } catch {
+          // queue below
+        }
+      }
+
+      await enqueueSync({
+        op: "delete",
+        localId: id,
+        serverId: isLocalId(serverId) ? undefined : serverId,
+      });
+      await refreshPendingCount();
+    },
+    [token, persistTx, checkNetwork, refreshPendingCount],
   );
 
   const addCategory = useCallback(
@@ -548,9 +886,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       loadingTx,
       loadingBudgets,
       refreshTick,
+      isOnline,
+      pendingSyncCount,
       refresh,
+      flushSyncQueue,
       addTransactions,
       mergeOptimistic: addTransactions,
+      createManualTransaction,
+      updateTransaction,
+      deleteTransaction,
       upsertBudget,
       addCategory,
       refreshBudgets,
@@ -567,8 +911,14 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       loadingTx,
       loadingBudgets,
       refreshTick,
+      isOnline,
+      pendingSyncCount,
       refresh,
+      flushSyncQueue,
       addTransactions,
+      createManualTransaction,
+      updateTransaction,
+      deleteTransaction,
       upsertBudget,
       addCategory,
       refreshBudgets,

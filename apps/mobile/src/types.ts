@@ -27,6 +27,8 @@ export const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
 export type TransactionType = "expense" | "income";
 export type SubscriptionPeriod = "monthly" | "annual";
 
+export type SyncStatus = "synced" | "pending";
+
 export interface Transaction {
   id: string;
   user_id: string;
@@ -38,6 +40,8 @@ export interface Transaction {
   payment_method: string;
   notes: string;
   created_at: string;
+  /** Local-only: pending upload / update / delete sync */
+  syncStatus?: SyncStatus;
 }
 
 export interface Profile {

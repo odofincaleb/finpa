@@ -141,6 +141,13 @@ npm run eas:build:apk
 
 EAS builds **reject** localhost/LAN API URLs so a live APK cannot ship pointing at your PC.
 
+### Offline Manual + sync
+
+- **Manual** entry works offline and queues creates/edits/deletes until the phone is online.
+- **Chat / Ask** (AI) require internet.
+- Tap a **Recent** / Ledger row to edit or delete.
+- **Monthly summary** → Download CSV statement (opens in Excel / Sheets).
+
 ### Voice (hold-to-talk mic)
 
 Uses `expo-speech-recognition` (on-device / system STT). **Requires an EAS APK or development build** — Expo Go shows a fallback alert. On first use, allow **microphone**.
@@ -155,6 +162,10 @@ Uses `expo-speech-recognition` (on-device / system STT). **Requires an EAS APK o
 |--------|------|------|
 | GET | `/api/me` | Bearer |
 | PATCH | `/api/me` | Bearer |
+| GET | `/api/transactions` | Bearer |
+| POST | `/api/transactions` | Bearer |
+| PATCH | `/api/transactions/:id` | Bearer |
+| DELETE | `/api/transactions/:id` | Bearer |
 | POST | `/api/pins/redeem` | Bearer |
 | GET | `/api/admin/pins` | Superadmin JWT or `x-admin-secret` |
 | POST | `/api/admin/pins/generate` | Superadmin JWT or `x-admin-secret` |

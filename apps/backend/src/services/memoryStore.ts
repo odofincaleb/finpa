@@ -90,6 +90,30 @@ export function memoryUpdateTransaction(
   return rows[idx];
 }
 
+export function memoryUpdateTransactionById(
+  userId: string,
+  id: string,
+  fields: Partial<TransactionExtract> & { created_at?: string },
+): TransactionRecord | null {
+  const rows = transactions.get(userId) ?? [];
+  const idx = rows.findIndex((r) => r.id === id && r.user_id === userId);
+  if (idx < 0) return null;
+  rows[idx] = { ...rows[idx], ...fields };
+  transactions.set(userId, rows);
+  return rows[idx];
+}
+
+export function memoryDeleteTransaction(
+  userId: string,
+  id: string,
+): boolean {
+  const rows = transactions.get(userId) ?? [];
+  const next = rows.filter((r) => !(r.id === id && r.user_id === userId));
+  if (next.length === rows.length) return false;
+  transactions.set(userId, next);
+  return true;
+}
+
 function budgetKey(userId: string, year: number, month: number) {
   return `${userId}:${year}:${month}`;
 }

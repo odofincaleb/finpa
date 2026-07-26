@@ -7,6 +7,7 @@ import {
   memoryGetBudgets,
   memoryGetPin,
   memoryGetProfile,
+  memoryDeleteTransaction,
   memoryInsertTransactions,
   memoryListPins,
   memoryListTransactions,
@@ -14,6 +15,7 @@ import {
   memoryUpdatePin,
   memoryUpdateProfile,
   memoryUpdateTransaction,
+  memoryUpdateTransactionById,
   memoryUpsertBudgets,
   type MemoryPin,
 } from "./memoryStore";
@@ -113,6 +115,101 @@ export async function updateMatchedTransaction(
     .single();
   if (error) throw new AppError(500, "INTERNAL", error.message);
   return data as TransactionRecord;
+}
+
+export type TransactionWriteFields = TransactionExtract & {
+  created_at?: string;
+};
+
+export async function createTransaction(
+  userId: string,
+  fields: TransactionWriteFields,
+): Promise<TransactionRecord> {
+  const item: TransactionExtract = {
+    amount: fields.amount,
+    currency: fields.currency,
+    category: fields.category,
+    merchant: fields.merchant,
+    type: fields.type,
+    payment_method: fields.payment_method ?? "",
+    notes: fields.notes ?? "",
+  };
+
+  if (!hasSupabase()) {
+    const [created] = memoryInsertTransactions(userId, [item]);
+    if (fields.created_at && created) {
+      return (
+        memoryUpdateTransactionById(userId, created.id, {
+          created_at: fields.created_at,
+        }) ?? created
+      );
+    }
+    return created;
+  }
+
+  const row = {
+    ...item,
+    user_id: userId,
+    ...(fields.created_at ? { created_at: fields.created_at } : {}),
+  };
+  const { data, error } = await getSupabase()
+    .from("transactions")
+    .insert(row)
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new AppError(500, "INTERNAL", error?.message ?? "Create failed");
+  }
+  return data as TransactionRecord;
+}
+
+export async function updateTransactionById(
+  userId: string,
+  id: string,
+  fields: Partial<TransactionWriteFields>,
+): Promise<TransactionRecord> {
+  if (!hasSupabase()) {
+    const updated = memoryUpdateTransactionById(userId, id, fields);
+    if (!updated) throw new AppError(404, "NOT_FOUND", "Transaction not found");
+    return updated;
+  }
+
+  const { data, error } = await getSupabase()
+    .from("transactions")
+    .update(fields)
+    .eq("id", id)
+    .eq("user_id", userId)
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new AppError(
+      error?.code === "PGRST116" ? 404 : 500,
+      error?.code === "PGRST116" ? "NOT_FOUND" : "INTERNAL",
+      error?.message ?? "Update failed",
+    );
+  }
+  return data as TransactionRecord;
+}
+
+export async function deleteTransaction(
+  userId: string,
+  id: string,
+): Promise<void> {
+  if (!hasSupabase()) {
+    const ok = memoryDeleteTransaction(userId, id);
+    if (!ok) throw new AppError(404, "NOT_FOUND", "Transaction not found");
+    return;
+  }
+
+  const { data, error } = await getSupabase()
+    .from("transactions")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new AppError(500, "INTERNAL", error.message);
+  if (!data) throw new AppError(404, "NOT_FOUND", "Transaction not found");
 }
 
 export async function getBudgetsWithActuals(

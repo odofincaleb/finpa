@@ -1,6 +1,8 @@
-import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { TransactionCard } from "./TransactionCard";
+import { TransactionEditModal } from "./TransactionEditModal";
+import { useFinance } from "../context/FinanceContext";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import type { Transaction } from "../types";
@@ -9,6 +11,7 @@ type Props = {
   transactions: Transaction[];
   limit?: number;
   highlightIds?: Set<string>;
+  editable?: boolean;
 };
 
 function dayLabel(iso: string) {
@@ -20,9 +23,17 @@ function dayLabel(iso: string) {
   });
 }
 
-export function TransactionTable({ transactions, limit, highlightIds }: Props) {
+export function TransactionTable({
+  transactions,
+  limit,
+  highlightIds,
+  editable = true,
+}: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { expenseCategories, updateTransaction, deleteTransaction } = useFinance();
+  const [editing, setEditing] = useState<Transaction | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const groups = useMemo(() => {
     const sliced = limit ? transactions.slice(0, limit) : transactions;
@@ -35,6 +46,28 @@ export function TransactionTable({ transactions, limit, highlightIds }: Props) {
     }
     return Array.from(map.entries());
   }, [transactions, limit]);
+
+  const confirmDelete = () => {
+    if (!editing) return;
+    Alert.alert("Delete entry", "Remove this transaction?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            setBusy(true);
+            try {
+              await deleteTransaction(editing.id);
+              setEditing(null);
+            } finally {
+              setBusy(false);
+            }
+          })();
+        },
+      },
+    ]);
+  };
 
   if (!transactions.length) {
     return (
@@ -52,15 +85,43 @@ export function TransactionTable({ transactions, limit, highlightIds }: Props) {
       {groups.map(([day, rows]) => (
         <View key={day} style={styles.group}>
           <Text style={styles.day}>{dayLabel(rows[0].created_at)}</Text>
-          {rows.map((item) => (
-            <TransactionCard
-              key={item.id}
-              item={item}
-              animate={highlightIds?.has(item.id)}
-            />
-          ))}
+          {rows.map((item) => {
+            const card = (
+              <TransactionCard
+                item={item}
+                animate={highlightIds?.has(item.id)}
+              />
+            );
+            if (!editable) return <View key={item.id}>{card}</View>;
+            return (
+              <Pressable key={item.id} onPress={() => setEditing(item)}>
+                {card}
+              </Pressable>
+            );
+          })}
         </View>
       ))}
+
+      <TransactionEditModal
+        visible={Boolean(editing)}
+        item={editing}
+        expenseCategories={expenseCategories}
+        busy={busy}
+        onClose={() => setEditing(null)}
+        onDelete={confirmDelete}
+        onSave={(patch) => {
+          if (!editing) return;
+          void (async () => {
+            setBusy(true);
+            try {
+              await updateTransaction(editing.id, patch);
+              setEditing(null);
+            } finally {
+              setBusy(false);
+            }
+          })();
+        }}
+      />
     </View>
   );
 }

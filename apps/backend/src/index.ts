@@ -13,6 +13,7 @@ import meRoutes from "./routes/me.routes";
 import pinsRoutes from "./routes/pins.routes";
 import budgetsRoutes from "./routes/budgets.routes";
 import adminPinsRoutes from "./routes/adminPins.routes";
+import transactionsRoutes from "./routes/transactions.routes";
 import { AppError } from "./lib/errors";
 import { hasSupabase } from "./lib/supabase";
 import { parseSuperAdminEmails } from "./middleware/auth";
@@ -38,6 +39,7 @@ app.use("/api/me", meRoutes);
 app.use("/api/pins", pinsRoutes);
 app.use("/api/budgets", budgetsRoutes);
 app.use("/api/admin/pins", adminPinsRoutes);
+app.use("/api/transactions", transactionsRoutes);
 app.use("/api", aiRoutes);
 
 app.use(

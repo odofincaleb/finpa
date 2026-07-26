@@ -4,7 +4,6 @@ import { AuthedRequest, requireAuth, requireSubscription } from "../middleware/a
 import { extractTransactions } from "../services/openrouter";
 import {
   insertTransactions,
-  listTransactions,
   updateMatchedTransaction,
 } from "../services/database";
 import { AppError } from "../lib/errors";
@@ -109,21 +108,6 @@ router.post(
         summary: ai.summary,
         transactions: created,
       });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
-
-router.get(
-  "/transactions",
-  requireAuth,
-  requireSubscription,
-  async (req, res, next) => {
-    try {
-      const { userId } = req as AuthedRequest;
-      const transactions = await listTransactions(userId, 100);
-      res.json({ transactions });
     } catch (err) {
       next(err);
     }

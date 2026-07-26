@@ -189,6 +189,46 @@ export async function fetchTransactions(token: string) {
   return request<{ transactions: Transaction[] }>("/api/transactions", { token });
 }
 
+export type TransactionWriteInput = {
+  amount: number;
+  currency?: string;
+  category: string;
+  merchant: string;
+  type: "expense" | "income";
+  payment_method?: string;
+  notes?: string;
+  created_at?: string;
+  client_id?: string;
+};
+
+export async function createTransactionApi(
+  token: string,
+  body: TransactionWriteInput,
+) {
+  return request<{ transaction: Transaction; client_id: string | null }>(
+    "/api/transactions",
+    { method: "POST", token, body: JSON.stringify(body) },
+  );
+}
+
+export async function updateTransactionApi(
+  token: string,
+  id: string,
+  body: Partial<TransactionWriteInput>,
+) {
+  return request<{ transaction: Transaction }>(
+    `/api/transactions/${encodeURIComponent(id)}`,
+    { method: "PATCH", token, body: JSON.stringify(body) },
+  );
+}
+
+export async function deleteTransactionApi(token: string, id: string) {
+  return request<{ ok: boolean }>(
+    `/api/transactions/${encodeURIComponent(id)}`,
+    { method: "DELETE", token },
+  );
+}
+
 export async function fetchBudgets(token: string, year: number, month: number) {
   return request<{
     rows: BudgetActualRow[];
