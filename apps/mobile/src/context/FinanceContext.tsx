@@ -26,6 +26,12 @@ import {
   saveSyncQueue,
   type SyncQueueItem,
 } from "../lib/syncQueue";
+import {
+  budgetKey,
+  customCategoriesKey,
+  purgeLegacySharedFinanceKeys,
+  txKey,
+} from "../lib/userStorage";
 import { useAuth } from "./AuthContext";
 import {
   CATEGORIES,
@@ -33,11 +39,6 @@ import {
   type Transaction,
   type TransactionType,
 } from "../types";
-
-const TX_KEY = "finpa.tx";
-const CUSTOM_CAT_KEY = "finpa.customCategories";
-const budgetKey = (year: number, month: number) =>
-  `finpa.budgets.${year}-${String(month).padStart(2, "0")}`;
 
 const DEFAULT_EXPENSE = CATEGORIES.filter((c) => c !== "Income");
 
@@ -211,68 +212,96 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     [budgetBase, transactions, year, month, currency, customCategories],
   );
 
-  const persistTx = useCallback(async (rows: Transaction[]) => {
-    try {
-      await AsyncStorage.setItem(TX_KEY, JSON.stringify(rows));
-    } catch {
-      // ignore
-    }
-  }, []);
+  const persistTx = useCallback(
+    async (rows: Transaction[]) => {
+      if (!userId || userId === "demo") return;
+      try {
+        await AsyncStorage.setItem(txKey(userId), JSON.stringify(rows));
+      } catch {
+        // ignore
+      }
+    },
+    [userId],
+  );
 
-  const persistCustomCategories = useCallback(async (cats: string[]) => {
-    try {
-      await AsyncStorage.setItem(CUSTOM_CAT_KEY, JSON.stringify(cats));
-    } catch {
-      // ignore
-    }
-  }, []);
+  const persistCustomCategories = useCallback(
+    async (cats: string[]) => {
+      if (!userId || userId === "demo") return;
+      try {
+        await AsyncStorage.setItem(
+          customCategoriesKey(userId),
+          JSON.stringify(cats),
+        );
+      } catch {
+        // ignore
+      }
+    },
+    [userId],
+  );
 
   const persistBudgets = useCallback(
     async (rows: BudgetActualRow[], y: number, m: number) => {
+      if (!userId || userId === "demo") return;
       try {
         const slim = rows.map((r) => ({
           category: r.category,
           budget_amount: r.budget_amount,
           currency: r.currency,
         }));
-        await AsyncStorage.setItem(budgetKey(y, m), JSON.stringify(slim));
+        await AsyncStorage.setItem(
+          budgetKey(userId, y, m),
+          JSON.stringify(slim),
+        );
       } catch {
         // ignore
       }
     },
-    [],
+    [userId],
   );
 
   const refreshPendingCount = useCallback(async () => {
-    const q = await loadSyncQueue();
+    if (!userId || userId === "demo") {
+      setPendingSyncCount(0);
+      return;
+    }
+    const q = await loadSyncQueue(userId);
     setPendingSyncCount(q.length);
-  }, []);
+  }, [userId]);
 
   const loadLocalTx = useCallback(async () => {
+    if (!userId || userId === "demo") return [] as Transaction[];
     try {
-      const raw = await AsyncStorage.getItem(TX_KEY);
+      const raw = await AsyncStorage.getItem(txKey(userId));
       if (!raw) return [] as Transaction[];
-      return JSON.parse(raw) as Transaction[];
+      const parsed = JSON.parse(raw) as Transaction[];
+      // Only keep rows that belong to this account
+      return parsed.filter((t) => !t.user_id || t.user_id === userId);
     } catch {
       return [];
     }
-  }, []);
+  }, [userId]);
 
   const loadCustomCategories = useCallback(async () => {
+    if (!userId || userId === "demo") return [] as string[];
     try {
-      const raw = await AsyncStorage.getItem(CUSTOM_CAT_KEY);
+      const raw = await AsyncStorage.getItem(customCategoriesKey(userId));
       if (!raw) return [] as string[];
       const parsed = JSON.parse(raw) as string[];
       return parsed.map(normalizeCategoryName).filter(Boolean);
     } catch {
       return [];
     }
-  }, []);
+  }, [userId]);
 
   const loadLocalBudgets = useCallback(
     async (customs: string[]) => {
+      if (!userId || userId === "demo") {
+        return seedBudgetRows(currency, buildCategoryList(customs));
+      }
       try {
-        const raw = await AsyncStorage.getItem(budgetKey(year, month));
+        const raw = await AsyncStorage.getItem(
+          budgetKey(userId, year, month),
+        );
         const list = buildCategoryList(customs);
         if (!raw) return seedBudgetRows(currency, list);
         const parsed = JSON.parse(raw) as Array<{
@@ -295,7 +324,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         return seedBudgetRows(currency, buildCategoryList(customs));
       }
     },
-    [year, month, currency],
+    [userId, year, month, currency],
   );
 
   const ensureCategoriesFromTxs = useCallback(
@@ -362,7 +391,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     if (!token || flushingRef.current) return;
     flushingRef.current = true;
     try {
-      let queue = await loadSyncQueue();
+      if (!userId || userId === "demo") return;
+      let queue = await loadSyncQueue(userId);
       if (!queue.length) {
         setPendingSyncCount(0);
         return;
@@ -408,12 +438,12 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      await saveSyncQueue(remaining);
+      await saveSyncQueue(userId, remaining);
       setPendingSyncCount(remaining.length);
     } finally {
       flushingRef.current = false;
     }
-  }, [token, replaceLocalWithServer]);
+  }, [token, userId, replaceLocalWithServer]);
 
   const refresh = useCallback(async () => {
     if (!token) {
@@ -453,6 +483,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const remoteIds = new Set(nextTx.map((t) => t.id));
     const localOnly = local.filter(
       (t) =>
+        (!t.user_id || t.user_id === userId) &&
         (t.id.startsWith("local-") || t.syncStatus === "pending") &&
         !remoteIds.has(t.id),
     );
@@ -492,6 +523,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     refreshPendingCount,
     flushSyncQueue,
     isOnline,
+    userId,
   ]);
 
   const checkNetwork = useCallback(async () => {
@@ -529,6 +561,27 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const sub = AppState.addEventListener("change", onAppState);
     return () => sub.remove();
   }, [checkNetwork, flushSyncQueue, refresh]);
+
+  // Drop shared legacy cache once so it cannot leak across accounts
+  useEffect(() => {
+    void purgeLegacySharedFinanceKeys();
+  }, []);
+
+  // Reset in-memory finance state when the logged-in user changes
+  const prevUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevUserIdRef.current && prevUserIdRef.current !== userId) {
+      idMapRef.current = new Map();
+      setTransactions([]);
+      setCustomCategories([]);
+      setBudgetBase(
+        seedBudgetRows(currency, DEFAULT_EXPENSE as unknown as string[]),
+      );
+      setPendingSyncCount(0);
+      setRefreshTick((n) => n + 1);
+    }
+    prevUserIdRef.current = userId;
+  }, [userId, currency]);
 
   useEffect(() => {
     refresh().catch(() => {
@@ -576,13 +629,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
           replaceLocalWithServer(localId, transaction);
           return { ...transaction, syncStatus: "synced" as const };
         } catch {
-          await enqueueSync({ op: "create", localId, payload });
+          await enqueueSync(userId, { op: "create", localId, payload });
           await refreshPendingCount();
           return localTx;
         }
       }
 
-      await enqueueSync({ op: "create", localId, payload });
+      await enqueueSync(userId, { op: "create", localId, payload });
       await refreshPendingCount();
       return localTx;
     },
@@ -643,7 +696,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      await enqueueSync({
+      await enqueueSync(userId, {
         op: "update",
         localId: id,
         serverId: isLocalId(serverId) ? undefined : serverId,
@@ -653,6 +706,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     },
     [
       token,
+      userId,
       persistTx,
       checkNetwork,
       replaceLocalWithServer,
@@ -673,7 +727,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       const serverId = idMapRef.current.get(id) || id;
 
       if (isLocalId(id) && !idMapRef.current.has(id)) {
-        await enqueueSync({ op: "delete", localId: id });
+        await enqueueSync(userId, { op: "delete", localId: id });
         await refreshPendingCount();
         return;
       }
@@ -687,14 +741,14 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      await enqueueSync({
+      await enqueueSync(userId, {
         op: "delete",
         localId: id,
         serverId: isLocalId(serverId) ? undefined : serverId,
       });
       await refreshPendingCount();
     },
-    [token, persistTx, checkNetwork, refreshPendingCount],
+    [token, userId, persistTx, checkNetwork, refreshPendingCount],
   );
 
   const addCategory = useCallback(
@@ -836,7 +890,10 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
 
       let base: BudgetActualRow[];
       try {
-        const raw = await AsyncStorage.getItem(budgetKey(y, m));
+        const raw =
+          userId && userId !== "demo"
+            ? await AsyncStorage.getItem(budgetKey(userId, y, m))
+            : null;
         const list = buildCategoryList(customCategories);
         if (!raw) {
           base = seedBudgetRows(currency, list);
@@ -871,7 +928,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         customCategories,
       ).rows;
     },
-    [year, month, budgetRows, customCategories, currency, transactions],
+    [
+      year,
+      month,
+      budgetRows,
+      customCategories,
+      currency,
+      transactions,
+      userId,
+    ],
   );
 
   const totalBudget = budgetRows.reduce((s, r) => s + Number(r.budget_amount), 0);

@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { TransactionWriteInput } from "./api";
-
-const QUEUE_KEY = "finpa.syncQueue";
+import { syncQueueKey } from "./userStorage";
 
 export type SyncQueueItem =
   | {
@@ -27,9 +26,10 @@ export type SyncQueueItem =
       createdAt: string;
     };
 
-export async function loadSyncQueue(): Promise<SyncQueueItem[]> {
+export async function loadSyncQueue(userId: string): Promise<SyncQueueItem[]> {
+  if (!userId) return [];
   try {
-    const raw = await AsyncStorage.getItem(QUEUE_KEY);
+    const raw = await AsyncStorage.getItem(syncQueueKey(userId));
     if (!raw) return [];
     return JSON.parse(raw) as SyncQueueItem[];
   } catch {
@@ -37,21 +37,26 @@ export async function loadSyncQueue(): Promise<SyncQueueItem[]> {
   }
 }
 
-export async function saveSyncQueue(items: SyncQueueItem[]): Promise<void> {
+export async function saveSyncQueue(
+  userId: string,
+  items: SyncQueueItem[],
+): Promise<void> {
+  if (!userId) return;
   try {
-    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(items));
+    await AsyncStorage.setItem(syncQueueKey(userId), JSON.stringify(items));
   } catch {
     // ignore
   }
 }
 
 export async function enqueueSync(
+  userId: string,
   item:
     | Omit<Extract<SyncQueueItem, { op: "create" }>, "id" | "createdAt">
     | Omit<Extract<SyncQueueItem, { op: "update" }>, "id" | "createdAt">
     | Omit<Extract<SyncQueueItem, { op: "delete" }>, "id" | "createdAt">,
 ): Promise<SyncQueueItem[]> {
-  const queue = await loadSyncQueue();
+  const queue = await loadSyncQueue(userId);
   const nextItem = {
     ...item,
     id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -72,7 +77,7 @@ export async function enqueueSync(
           nextItem,
         ]
       : filtered.filter((q) => q.localId !== nextItem.localId);
-    await saveSyncQueue(next);
+    await saveSyncQueue(userId, next);
     return next;
   }
 
@@ -88,13 +93,13 @@ export async function enqueueSync(
       };
       const next = [...queue];
       next[createIdx] = merged;
-      await saveSyncQueue(next);
+      await saveSyncQueue(userId, next);
       return next;
     }
   }
 
   const next = [...queue, nextItem];
-  await saveSyncQueue(next);
+  await saveSyncQueue(userId, next);
   return next;
 }
 
