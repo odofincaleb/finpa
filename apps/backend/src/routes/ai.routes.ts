@@ -8,7 +8,8 @@ import {
   updateMatchedTransaction,
 } from "../services/database";
 import { AppError } from "../lib/errors";
-import type { CurrencyCode } from "../types/transaction";
+import { parseExpenseLocally } from "../lib/localParse";
+import type { AiChatResult, CurrencyCode } from "../types/transaction";
 
 const router = Router();
 
@@ -29,11 +30,34 @@ router.post(
         throw new AppError(400, "VALIDATION_ERROR", "message is required");
       }
 
-      const ai = await extractTransactions(
-        parsed.data.message,
-        profile.preferred_currency as CurrencyCode,
-        parsed.data.categories ?? [],
-      );
+      const currency = profile.preferred_currency as CurrencyCode;
+      const categories = parsed.data.categories ?? [];
+
+      let ai: AiChatResult;
+      try {
+        ai = await extractTransactions(
+          parsed.data.message,
+          currency,
+          categories,
+        );
+      } catch (aiErr) {
+        // OpenRouter free tier often 429/502 — still log clear expenses
+        const local = parseExpenseLocally(
+          parsed.data.message,
+          currency,
+          categories,
+        );
+        if (!local) throw aiErr;
+        console.warn(
+          "[finpa] OpenRouter failed; used local parse:",
+          aiErr instanceof Error ? aiErr.message : aiErr,
+        );
+        ai = {
+          action: "create",
+          summary: local.summary,
+          items: local.items,
+        };
+      }
 
       if (ai.action === "clarify") {
         res.json({

@@ -1,13 +1,12 @@
-import type { Transaction, TransactionType } from "../types";
 import { resolveCategory } from "./resolveCategory";
+import type { CurrencyCode, TransactionExtract } from "../types/transaction";
 
-/** Lightweight offline parser for Expo Go / unreachable API demos. */
+/** Deterministic parser when OpenRouter is down / rate-limited. */
 export function parseExpenseLocally(
   message: string,
-  userId: string,
-  currency: string,
+  preferredCurrency: CurrencyCode,
   categories: string[] = [],
-): { summary: string; transactions: Transaction[] } | null {
+): { summary: string; items: TransactionExtract[] } | null {
   const text = message.trim();
   if (!text) return null;
 
@@ -20,34 +19,30 @@ export function parseExpenseLocally(
   const amount = Number(amountMatch[1].replace(/,/g, ""));
   if (!Number.isFinite(amount) || amount <= 0) return null;
 
-  const type: TransactionType = income ? "income" : "expense";
-  const category =
-    type === "income"
-      ? "Income"
-      : resolveCategory(text, "Other", categories);
+  const type: "income" | "expense" = income ? "income" : "expense";
+  const category = resolveCategory(text, "Other", categories, type);
 
   const merchantMatch =
     text.match(/\bat\s+([A-Za-z0-9 &.'-]{2,40})/i) ||
     text.match(/\b(?:on|for)\s+([A-Za-z0-9 &.'-]{2,40})/i);
-  const merchant = (merchantMatch?.[1] || category).trim().replace(/[.,!?]+$/, "");
+  const merchant = (merchantMatch?.[1] || category)
+    .trim()
+    .replace(/[.,!?]+$/, "");
 
-  const tx: Transaction = {
-    id: `local-${Date.now()}`,
-    user_id: userId,
+  const item: TransactionExtract = {
     amount,
-    currency,
+    currency: preferredCurrency,
     category,
     merchant,
     type,
     payment_method: /transfer|pos|cash|card|visa|verve/i.exec(text)?.[0] || "",
     notes: text,
-    created_at: new Date().toISOString(),
   };
 
   const summary =
     type === "income"
-      ? `Logged ${currency} ${amount} under Income`
-      : `Logged ${currency} ${amount} under ${category}`;
+      ? `Logged ${preferredCurrency} ${amount} under Income`
+      : `Logged ${preferredCurrency} ${amount} under ${category}`;
 
-  return { summary, transactions: [tx] };
+  return { summary, items: [item] };
 }

@@ -126,28 +126,35 @@ export async function extractTransactions(
   const model =
     process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free";
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+  const messages = [
+    {
+      role: "system" as const,
+      content: buildSystemPrompt(preferredCurrency, categoryEnum),
+    },
+    { role: "user" as const, content: message },
+  ];
 
-  const run = async () =>
+  const run = async (withSchema: boolean) =>
     client.chat.completions.create(
       {
         model,
         temperature: 0.1,
-        messages: [
-          {
-            role: "system",
-            content: buildSystemPrompt(preferredCurrency, categoryEnum),
-          },
-          { role: "user", content: message },
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: schema as unknown as {
-            name: string;
-            strict?: boolean;
-            schema: Record<string, unknown>;
-          },
-        },
+        messages,
+        ...(withSchema
+          ? {
+              response_format: {
+                type: "json_schema" as const,
+                json_schema: schema as unknown as {
+                  name: string;
+                  strict?: boolean;
+                  schema: Record<string, unknown>;
+                },
+              },
+            }
+          : {
+              response_format: { type: "json_object" as const },
+            }),
       },
       { signal: controller.signal },
     );
@@ -155,14 +162,15 @@ export async function extractTransactions(
   try {
     let completion;
     try {
-      completion = await run();
+      completion = await run(true);
     } catch (err: unknown) {
       const status = (err as { status?: number })?.status;
       if (status === 429) {
         await sleep(1200);
-        completion = await run();
+        completion = await run(true);
       } else {
-        throw err;
+        // Many free models reject json_schema — retry with json_object
+        completion = await run(false);
       }
     }
 

@@ -159,32 +159,35 @@ export function useChatExpense(
           return;
         }
 
-        // Dev / unreachable tunnel: parse locally so Expo Go testing can continue
-        if (isDevAuth) {
-          const local = parseExpenseLocally(
-            text,
-            profile?.id || "dev-user",
-            profile?.preferred_currency || "NGN",
-            expenseCategories,
-          );
-          if (local) {
-            pushAssistant(local.summary);
-            onCreated?.(local.transactions);
-            setSending(false);
-            return;
-          }
+        // AI/API hiccup: still log clear “Spent X on Y” locally
+        const local = parseExpenseLocally(
+          text,
+          profile?.id || "dev-user",
+          profile?.preferred_currency || "NGN",
+          expenseCategories,
+        );
+        if (local) {
+          const summary = local.summary.replace(/\s*\(offline demo\)\s*$/i, "");
+          pushAssistant(summary);
+          onCreated?.(local.transactions);
+          setSending(false);
+          return;
         }
 
         const status = err instanceof ApiError ? err.status : 0;
         const msg =
           err instanceof ApiError
             ? err.code === "RATE_LIMIT"
-              ? "Free-tier limit hit. Wait a moment and try again."
+              ? "AI is busy right now. Wait a moment and try again."
               : err.code === "UPSTREAM_TIMEOUT"
                 ? "AI timed out. Please try again."
-                : status === 502 || status === 503
-                  ? "API tunnel is down (502/503). Restart localtunnel or use a message like “Spent 4500 on fuel” (offline demo)."
-                  : err.message
+                : err.code === "SUBSCRIPTION_REQUIRED"
+                  ? err.message
+                  : status === 502 || status === 503
+                    ? "FINPA AI is temporarily unavailable. Try again, or use Manual entry."
+                    : status === 0
+                      ? "Could not reach FINPA servers. Check your internet and try again."
+                      : err.message
             : "Something went wrong.";
         setError(msg);
         pushAssistant(msg);
