@@ -9,6 +9,11 @@ import React, {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { fetchMe } from "../lib/api";
+import {
+  isSubscriptionActiveLocal,
+  loadAuthSnapshot,
+  saveAuthSnapshot,
+} from "../lib/authSnapshot";
 import type { Profile } from "../types";
 
 const DEV_SESSION_KEY = "finpa.dev.session";
@@ -41,6 +46,14 @@ function makeDevProfile(userId: string, email: string): Profile {
   };
 }
 
+function applyLocalEntitlements(profile: Profile, isSuperAdmin: boolean) {
+  return {
+    subscriptionActive:
+      isSuperAdmin || isSubscriptionActiveLocal(profile),
+    isSuperAdmin,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
@@ -48,17 +61,94 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [subscriptionActive, setSubscriptionActive] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
-  const hydrateFromToken = useCallback(async (accessToken: string) => {
-    try {
-      const me = await fetchMe(accessToken);
-      setToken(accessToken);
-      setProfile(me.profile);
-      setSubscriptionActive(me.subscriptionActive);
-      setIsSuperAdmin(Boolean(me.isSuperAdmin));
-    } catch {
-      setToken(accessToken);
-    }
+  const persistSnapshot = useCallback(
+    async (
+      nextProfile: Profile,
+      active: boolean,
+      admin: boolean,
+    ) => {
+      await saveAuthSnapshot(nextProfile.id, {
+        profile: nextProfile,
+        subscriptionActive: active,
+        isSuperAdmin: admin,
+      });
+    },
+    [],
+  );
+
+  const restoreFromSnapshot = useCallback(async (userId: string) => {
+    const snap = await loadAuthSnapshot(userId);
+    if (!snap?.profile) return false;
+    const entitlements = applyLocalEntitlements(
+      snap.profile,
+      Boolean(snap.isSuperAdmin),
+    );
+    setProfile(snap.profile);
+    setSubscriptionActive(entitlements.subscriptionActive);
+    setIsSuperAdmin(entitlements.isSuperAdmin);
+    return entitlements.subscriptionActive || entitlements.isSuperAdmin;
   }, []);
+
+  const hydrateFromToken = useCallback(
+    async (accessToken: string, userIdHint?: string) => {
+      try {
+        const me = await fetchMe(accessToken);
+        const admin = Boolean(me.isSuperAdmin);
+        const active = Boolean(me.subscriptionActive) || admin;
+        setToken(accessToken);
+        setProfile(me.profile);
+        setSubscriptionActive(active);
+        setIsSuperAdmin(admin);
+        await persistSnapshot(me.profile, active, admin);
+      } catch {
+        // Offline / API down: keep session and restore last known entitlements
+        setToken(accessToken);
+        const userId =
+          userIdHint ||
+          (await (async () => {
+            if (isSupabaseConfigured && supabase) {
+              const { data } = await supabase.auth.getSession();
+              return data.session?.user?.id;
+            }
+            return undefined;
+          })());
+
+        if (userId) {
+          const restored = await restoreFromSnapshot(userId);
+          if (restored) return;
+        }
+
+        // Dev session may already have a profile in memory path
+        if (!userIdHint) {
+          try {
+            const raw = await AsyncStorage.getItem(DEV_SESSION_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw) as {
+                profile?: Profile;
+                subscriptionActive?: boolean;
+                isSuperAdmin?: boolean;
+              };
+              if (parsed.profile) {
+                const entitlements = applyLocalEntitlements(
+                  parsed.profile,
+                  Boolean(parsed.isSuperAdmin),
+                );
+                setProfile(parsed.profile);
+                setSubscriptionActive(
+                  entitlements.subscriptionActive ||
+                    Boolean(parsed.subscriptionActive),
+                );
+                setIsSuperAdmin(entitlements.isSuperAdmin);
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    },
+    [persistSnapshot, restoreFromSnapshot],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -68,12 +158,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (isSupabaseConfigured && supabase) {
           const { data } = await supabase.auth.getSession();
           if (data.session?.access_token && mounted) {
-            await hydrateFromToken(data.session.access_token);
+            await hydrateFromToken(
+              data.session.access_token,
+              data.session.user?.id,
+            );
           }
           supabase.auth.onAuthStateChange(async (_event, session) => {
             if (!mounted) return;
             if (session?.access_token) {
-              await hydrateFromToken(session.access_token);
+              await hydrateFromToken(session.access_token, session.user?.id);
             } else {
               setToken(null);
               setProfile(null);
@@ -84,15 +177,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           const raw = await AsyncStorage.getItem(DEV_SESSION_KEY);
           if (raw && mounted) {
-            const parsed = JSON.parse(raw) as { token: string; profile: Profile };
+            const parsed = JSON.parse(raw) as {
+              token: string;
+              profile: Profile;
+              subscriptionActive?: boolean;
+              isSuperAdmin?: boolean;
+            };
             setToken(parsed.token);
             try {
               const me = await fetchMe(parsed.token);
+              const admin = Boolean(me.isSuperAdmin);
+              const active = Boolean(me.subscriptionActive) || admin;
               setProfile(me.profile);
-              setSubscriptionActive(me.subscriptionActive);
-              setIsSuperAdmin(Boolean(me.isSuperAdmin));
+              setSubscriptionActive(active);
+              setIsSuperAdmin(admin);
+              await persistSnapshot(me.profile, active, admin);
+              await AsyncStorage.setItem(
+                DEV_SESSION_KEY,
+                JSON.stringify({
+                  token: parsed.token,
+                  profile: me.profile,
+                  subscriptionActive: active,
+                  isSuperAdmin: admin,
+                }),
+              );
             } catch {
-              setProfile(parsed.profile);
+              const snap = await loadAuthSnapshot(parsed.profile.id);
+              const profile = snap?.profile ?? parsed.profile;
+              const admin = Boolean(
+                snap?.isSuperAdmin ?? parsed.isSuperAdmin,
+              );
+              const entitlements = applyLocalEntitlements(profile, admin);
+              setProfile(profile);
+              setSubscriptionActive(
+                entitlements.subscriptionActive ||
+                  Boolean(parsed.subscriptionActive),
+              );
+              setIsSuperAdmin(entitlements.isSuperAdmin);
             }
           }
         }
@@ -105,40 +226,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [hydrateFromToken]);
+  }, [hydrateFromToken, persistSnapshot]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      if (data.session?.access_token) {
-        await hydrateFromToken(data.session.access_token);
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      if (isSupabaseConfigured && supabase) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        if (data.session?.access_token) {
+          await hydrateFromToken(
+            data.session.access_token,
+            data.session.user?.id,
+          );
+        }
+        return;
       }
-      return;
-    }
 
-    const userId = `dev-${email.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
-    const accessToken = `dev:${userId}:${email}`;
-    let nextProfile = makeDevProfile(userId, email);
-    let active = false;
-    let admin = false;
-    try {
-      const me = await fetchMe(accessToken);
-      nextProfile = me.profile;
-      active = me.subscriptionActive;
-      admin = Boolean(me.isSuperAdmin);
-    } catch {
-      // backend may be offline; still allow local session
-    }
-    await AsyncStorage.setItem(
-      DEV_SESSION_KEY,
-      JSON.stringify({ token: accessToken, profile: nextProfile }),
-    );
-    setToken(accessToken);
-    setProfile(nextProfile);
-    setSubscriptionActive(active);
-    setIsSuperAdmin(admin);
-  }, [hydrateFromToken]);
+      const userId = `dev-${email.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+      const accessToken = `dev:${userId}:${email}`;
+      let nextProfile = makeDevProfile(userId, email);
+      let active = false;
+      let admin = false;
+      try {
+        const me = await fetchMe(accessToken);
+        nextProfile = me.profile;
+        active = Boolean(me.subscriptionActive);
+        admin = Boolean(me.isSuperAdmin);
+      } catch {
+        const snap = await loadAuthSnapshot(userId);
+        if (snap?.profile) {
+          nextProfile = snap.profile;
+          admin = Boolean(snap.isSuperAdmin);
+          active =
+            applyLocalEntitlements(nextProfile, admin).subscriptionActive ||
+            Boolean(snap.subscriptionActive);
+        }
+      }
+      active = active || admin || isSubscriptionActiveLocal(nextProfile);
+      await AsyncStorage.setItem(
+        DEV_SESSION_KEY,
+        JSON.stringify({
+          token: accessToken,
+          profile: nextProfile,
+          subscriptionActive: active,
+          isSuperAdmin: admin,
+        }),
+      );
+      await persistSnapshot(nextProfile, active, admin);
+      setToken(accessToken);
+      setProfile(nextProfile);
+      setSubscriptionActive(active);
+      setIsSuperAdmin(admin);
+    },
+    [hydrateFromToken, persistSnapshot],
+  );
 
   const signUp = useCallback(
     async (email: string, password: string) => {
@@ -146,7 +290,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         if (data.session?.access_token) {
-          await hydrateFromToken(data.session.access_token);
+          await hydrateFromToken(
+            data.session.access_token,
+            data.session.user?.id,
+          );
         } else {
           await signIn(email, password).catch(() => {
             throw new Error(
@@ -174,16 +321,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     if (!token) return;
-    const me = await fetchMe(token);
-    setProfile(me.profile);
-    setSubscriptionActive(me.subscriptionActive);
-    setIsSuperAdmin(Boolean(me.isSuperAdmin));
-  }, [token]);
+    try {
+      const me = await fetchMe(token);
+      const admin = Boolean(me.isSuperAdmin);
+      const active = Boolean(me.subscriptionActive) || admin;
+      setProfile(me.profile);
+      setSubscriptionActive(active);
+      setIsSuperAdmin(admin);
+      await persistSnapshot(me.profile, active, admin);
+    } catch {
+      if (profile?.id) await restoreFromSnapshot(profile.id);
+    }
+  }, [token, profile?.id, persistSnapshot, restoreFromSnapshot]);
 
-  const setProfileLocal = useCallback((next: Profile, active: boolean) => {
-    setProfile(next);
-    setSubscriptionActive(active);
-  }, []);
+  const setProfileLocal = useCallback(
+    (next: Profile, active: boolean) => {
+      const admin = isSuperAdmin;
+      const nextActive = active || admin || isSubscriptionActiveLocal(next);
+      setProfile(next);
+      setSubscriptionActive(nextActive);
+      void persistSnapshot(next, nextActive, admin);
+      if (!isSupabaseConfigured) {
+        void AsyncStorage.getItem(DEV_SESSION_KEY).then((raw) => {
+          if (!raw) return;
+          try {
+            const parsed = JSON.parse(raw) as Record<string, unknown>;
+            void AsyncStorage.setItem(
+              DEV_SESSION_KEY,
+              JSON.stringify({
+                ...parsed,
+                profile: next,
+                subscriptionActive: nextActive,
+                isSuperAdmin: admin,
+              }),
+            );
+          } catch {
+            // ignore
+          }
+        });
+      }
+    },
+    [isSuperAdmin, persistSnapshot],
+  );
 
   const value = useMemo(
     () => ({

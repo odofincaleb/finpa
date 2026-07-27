@@ -148,6 +148,7 @@ EAS builds **reject** localhost/LAN API URLs so a live APK cannot ship pointing 
 - Tap a **Recent** / Ledger row to edit or delete.
 - **Monthly summary** → Download CSV statement (opens in Excel / Sheets).
 - Local cache / sync queue is **per logged-in user** — multiple accounts on one device keep separate ledgers.
+- After a successful online login/activation, cold start **offline** restores Home (Manual entry) from a cached auth snapshot instead of the PIN screen.
 
 ### Voice (hold-to-talk mic)
 
