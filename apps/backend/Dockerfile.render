@@ -1,5 +1,6 @@
-# Belmo / Render: build with context = apps/backend
-#   docker build -t finpa-api .
+# Optional Docker image (Render). Belmo uses npm buildpack — do not name this "Dockerfile"
+# or Belmo Starter may try Docker builds (Pro) and produce no logs.
+#   docker build -f Dockerfile.render -t finpa-api .
 FROM node:20-alpine AS build
 WORKDIR /app
 

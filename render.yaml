@@ -4,7 +4,7 @@ services:
     name: finpa-api
     runtime: docker
     plan: free
-    dockerfilePath: ./apps/backend/Dockerfile
+    dockerfilePath: ./apps/backend/Dockerfile.render
     dockerContext: ./apps/backend
     healthCheckPath: /health
     envVars:
