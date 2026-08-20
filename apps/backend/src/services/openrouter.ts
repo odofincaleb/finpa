@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { AppError } from "../lib/errors";
 import { buildCategoryEnum } from "../lib/categories";
+import { resolveOpenRouterModel } from "../lib/openrouterModel";
 import { resolveCategory } from "../lib/resolveCategory";
 import type { AiChatResult, CurrencyCode } from "../types/transaction";
 
@@ -123,8 +124,7 @@ export async function extractTransactions(
   const categoryEnum = buildCategoryEnum(categories);
   const schema = buildExtractionSchema(categoryEnum);
   const client = getClient();
-  const model =
-    process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free";
+  const model = resolveOpenRouterModel();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 25_000);
   const messages = [

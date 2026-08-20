@@ -1,5 +1,10 @@
 import { randomUUID } from "crypto";
 import { findMatchingTransaction } from "../lib/matchTransaction";
+import {
+  allowDemoPins,
+  generateActivationCode,
+  isDemoPinCode,
+} from "../lib/securePin";
 import type {
   Category,
   MonthlyBudget,
@@ -163,7 +168,7 @@ export function memoryCreatePins(
   const duration_days = period === "annual" ? 365 : 30;
   const created: MemoryPin[] = [];
   for (let i = 0; i < count; i++) {
-    const code = `FINPA-${randomChunk()}-${randomChunk()}`;
+    const code = generateActivationCode();
     const row: MemoryPin = {
       code,
       period,
@@ -240,12 +245,9 @@ export function memoryDeletePin(code: string): void {
   pins.delete(key);
 }
 
-function randomChunk() {
-  return Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
-}
-
 /** Seed a known demo PIN for local Expo Go review (memory mode only). */
 export function memorySeedDemoPin() {
+  if (!allowDemoPins()) return;
   if (!pins.has("FINPA-DEMO-0001")) {
     pins.set("FINPA-DEMO-0001", {
       code: "FINPA-DEMO-0001",
@@ -263,7 +265,10 @@ export function memorySeedDemoPin() {
 export function memoryRedeemPin(userId: string, code: string): Profile {
   const normalized = code.trim().toUpperCase();
   const pin = pins.get(normalized);
-  const isDemo = normalized.startsWith("FINPA-DEMO-");
+  const isDemo = isDemoPinCode(normalized);
+  if (isDemo && !allowDemoPins()) {
+    throw new Error("PIN_INVALID");
+  }
   if (!pin || (!isDemo && pin.redeemed_by)) {
     throw new Error("PIN_INVALID");
   }

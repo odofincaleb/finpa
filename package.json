@@ -9,6 +9,7 @@
     "dev:mobile": "npm run start --workspace=@finpa/mobile",
     "generate-pins": "npm run generate-pins --workspace=@finpa/backend",
     "build:backend": "npm run build --workspace=@finpa/backend",
+    "test": "npm run test --workspace=@finpa/backend --",
     "eas:login": "npm run eas:login --workspace=@finpa/mobile",
     "eas:build:apk": "npm run eas:build:apk --workspace=@finpa/mobile",
     "supabase:check": "node scripts/check-supabase.mjs"

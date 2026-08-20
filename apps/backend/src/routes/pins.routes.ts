@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { AuthedRequest, requireAuth } from "../middleware/auth";
+import { pinRedeemLimiter } from "../middleware/rateLimit";
 import { isSubscriptionActive, redeemPin } from "../services/database";
 import { AppError } from "../lib/errors";
 
@@ -10,7 +11,7 @@ const redeemSchema = z.object({
   code: z.string().min(4).max(64),
 });
 
-router.post("/redeem", requireAuth, async (req, res, next) => {
+router.post("/redeem", pinRedeemLimiter, requireAuth, async (req, res, next) => {
   try {
     const { userId } = req as AuthedRequest;
     const parsed = redeemSchema.safeParse(req.body);

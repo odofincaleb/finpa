@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { AuthedRequest, requireAuth, requireSubscription } from "../middleware/auth";
+import { chatExpenseLimiter } from "../middleware/rateLimit";
 import { extractTransactions } from "../services/openrouter";
 import {
   insertTransactions,
@@ -19,6 +20,7 @@ const bodySchema = z.object({
 
 router.post(
   "/chat-expense",
+  chatExpenseLimiter,
   requireAuth,
   requireSubscription,
   async (req, res, next) => {

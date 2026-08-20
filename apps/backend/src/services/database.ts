@@ -2,6 +2,11 @@ import { getSupabase, hasSupabase } from "../lib/supabase";
 import { AppError } from "../lib/errors";
 import { findMatchingTransaction } from "../lib/matchTransaction";
 import {
+  allowDemoPins,
+  generateActivationCode,
+  isDemoPinCode,
+} from "../lib/securePin";
+import {
   memoryCreatePins,
   memoryDeletePin,
   memoryGetBudgets,
@@ -311,9 +316,6 @@ export async function upsertBudgets(
   return (data ?? []) as MonthlyBudget[];
 }
 
-function randomChunk() {
-  return Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
-}
 
 export type AdminPin = {
   code: string;
@@ -353,7 +355,7 @@ export async function generatePins(
   const duration_days = period === "annual" ? 365 : 30;
   const label = notes.trim();
   const rows = Array.from({ length: count }, () => ({
-    code: `FINPA-${randomChunk()}-${randomChunk()}`,
+    code: generateActivationCode(),
     period,
     duration_days,
     notes: label,
@@ -499,6 +501,11 @@ export async function deletePin(code: string): Promise<void> {
 }
 
 export async function redeemPin(userId: string, code: string): Promise<Profile> {
+  const normalized = code.trim().toUpperCase();
+  if (isDemoPinCode(normalized) && !allowDemoPins()) {
+    throw new AppError(400, "PIN_INVALID", "Invalid or already used PIN");
+  }
+
   if (!hasSupabase()) {
     try {
       return memoryRedeemPin(userId, code);
@@ -507,63 +514,23 @@ export async function redeemPin(userId: string, code: string): Promise<Profile> 
     }
   }
 
-  const supabase = getSupabase();
-  const normalized = code.trim().toUpperCase();
-  // Shared demo codes stay reusable for testing / reviews
-  const isDemoPin = normalized.startsWith("FINPA-DEMO-");
+  const { data, error } = await getSupabase().rpc("redeem_activation_pin", {
+    p_code: normalized,
+    p_user_id: userId,
+    p_allow_demo: allowDemoPins(),
+  });
 
-  const { data: pin, error } = await supabase
-    .from("activation_pins")
-    .select("*")
-    .eq("code", normalized)
-    .maybeSingle();
-
-  if (error) throw new AppError(500, "INTERNAL", error.message);
-  if (!pin || (!isDemoPin && pin.redeemed_by)) {
+  if (error) {
+    const msg = error.message || "";
+    if (msg.includes("PIN_INVALID")) {
+      throw new AppError(400, "PIN_INVALID", "Invalid or already used PIN");
+    }
+    throw new AppError(500, "INTERNAL", msg);
+  }
+  if (!data) {
     throw new AppError(400, "PIN_INVALID", "Invalid or already used PIN");
   }
-  if (pin.expires_at && new Date(pin.expires_at).getTime() < Date.now()) {
-    throw new AppError(400, "PIN_INVALID", "This PIN has expired");
-  }
-
-  const profile = await getProfile(userId, "");
-  const base = Math.max(
-    Date.now(),
-    profile.subscription_expires_at
-      ? new Date(profile.subscription_expires_at).getTime()
-      : 0,
-  );
-  const expires = new Date(
-    base + Number(pin.duration_days) * 24 * 60 * 60 * 1000,
-  ).toISOString();
-
-  if (!isDemoPin) {
-    const { error: pinUpdateError } = await supabase
-      .from("activation_pins")
-      .update({ redeemed_by: userId, redeemed_at: new Date().toISOString() })
-      .eq("id", pin.id)
-      .is("redeemed_by", null);
-
-    if (pinUpdateError) {
-      throw new AppError(500, "INTERNAL", pinUpdateError.message);
-    }
-  }
-
-  const { data: updated, error: profileError } = await supabase
-    .from("profiles")
-    .update({
-      subscription_period: pin.period,
-      subscription_expires_at: expires,
-      activated_at: profile.activated_at ?? new Date().toISOString(),
-    })
-    .eq("id", userId)
-    .select("*")
-    .single();
-
-  if (profileError || !updated) {
-    throw new AppError(500, "INTERNAL", profileError?.message ?? "Failed to activate");
-  }
-  return updated as Profile;
+  return data as Profile;
 }
 
 export function isSubscriptionActive(profile: Profile): boolean {
