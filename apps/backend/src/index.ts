@@ -25,14 +25,22 @@ const port = Number(process.env.PORT || 3001);
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-app.get("/health", (_req, res) => {
-  res.json({
+function healthPayload() {
+  return {
     ok: true,
     service: "finpa-backend",
     supabase: hasSupabase(),
     openrouter: Boolean(process.env.OPENROUTER_API_KEY),
     superadmins: parseSuperAdminEmails().length,
-  });
+  };
+}
+
+app.get("/", (_req, res) => {
+  res.json(healthPayload());
+});
+
+app.get("/health", (_req, res) => {
+  res.json(healthPayload());
 });
 
 app.use("/api/me", meRoutes);
