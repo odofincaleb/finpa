@@ -2,6 +2,8 @@
 
 Mobile personal finance app: chat or speak expenses, AI extracts structured ledger rows, expandable monthly budget vs actuals, email auth, and PIN-based monthly/annual activation.
 
+**Product overview (features, audiences, moat):** see [`PRODUCT.md`](PRODUCT.md).
+
 ## Stack
 
 - **Mobile**: Expo (React Native) + TypeScript + NativeWind + Lucide
