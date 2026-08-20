@@ -22,6 +22,8 @@ export function healthPayload() {
 
 export function createApp() {
   const app = express();
+  // Belmo / reverse proxies send X-Forwarded-For
+  app.set("trust proxy", 1);
 
   app.use(cors());
   app.use(express.json({ limit: "1mb" }));

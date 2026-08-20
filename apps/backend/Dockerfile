@@ -1,26 +1,24 @@
-# Build from monorepo root:
-#   docker build -f apps/backend/Dockerfile .
+# Belmo / Render: build with context = apps/backend
+#   docker build -t finpa-api .
 FROM node:20-alpine AS build
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-COPY apps/backend/package.json ./apps/backend/
-RUN npm ci --workspace=@finpa/backend
+COPY package.json ./
+RUN npm install
 
-COPY apps/backend ./apps/backend
-RUN npm run build --workspace=@finpa/backend
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
 
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
 
-COPY package.json package-lock.json ./
-COPY apps/backend/package.json ./apps/backend/
-RUN npm ci --workspace=@finpa/backend --omit=dev
+COPY package.json ./
+RUN npm install --omit=dev
 
-COPY --from=build /app/apps/backend/dist ./apps/backend/dist
+COPY --from=build /app/dist ./dist
 
-WORKDIR /app/apps/backend
 EXPOSE 3001
 CMD ["node", "dist/index.js"]
