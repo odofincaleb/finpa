@@ -6,7 +6,9 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getAuthRedirectUrl } from "../lib/authRedirect";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { fetchMe } from "../lib/api";
 import {
@@ -152,6 +154,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let linkSub: { remove: () => void } | undefined;
+
+    async function handleAuthUrl(url: string | null) {
+      if (!url || !isSupabaseConfigured || !supabase || !mounted) return;
+
+      try {
+        const parsed = new URL(url);
+        const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+        const code =
+          parsed.searchParams.get("code") || hashParams.get("code");
+        const accessToken =
+          parsed.searchParams.get("access_token") ||
+          hashParams.get("access_token");
+        const refreshToken =
+          parsed.searchParams.get("refresh_token") ||
+          hashParams.get("refresh_token");
+
+        if (code) {
+          const { data, error } =
+            await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+          if (data.session?.access_token && mounted) {
+            await hydrateFromToken(
+              data.session.access_token,
+              data.session.user?.id,
+            );
+          }
+          return;
+        }
+
+        if (accessToken && refreshToken) {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) throw error;
+          if (data.session?.access_token && mounted) {
+            await hydrateFromToken(
+              data.session.access_token,
+              data.session.user?.id,
+            );
+          }
+        }
+      } catch (err) {
+        console.warn(
+          "[finpa] auth deep-link failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
 
     async function boot() {
       try {
@@ -174,6 +226,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setIsSuperAdmin(false);
             }
           });
+
+          const initialUrl = await Linking.getInitialURL();
+          await handleAuthUrl(initialUrl);
+          if (mounted) {
+            linkSub = Linking.addEventListener("url", ({ url }) => {
+              void handleAuthUrl(url);
+            });
+          }
         } else {
           const raw = await AsyncStorage.getItem(DEV_SESSION_KEY);
           if (raw && mounted) {
@@ -225,6 +285,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     boot();
     return () => {
       mounted = false;
+      linkSub?.remove();
     };
   }, [hydrateFromToken, persistSnapshot]);
 
@@ -287,7 +348,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = useCallback(
     async (email: string, password: string) => {
       if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: getAuthRedirectUrl() },
+        });
         if (error) throw error;
         if (data.session?.access_token) {
           await hydrateFromToken(

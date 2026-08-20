@@ -32,6 +32,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ...config,
     name: config.name ?? "FINPA",
     slug: config.slug ?? "finpa",
+    scheme: config.scheme ?? "finpa",
     android: {
       ...config.android,
       // Allow http only for local/LAN dev; production should use https
