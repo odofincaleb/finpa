@@ -171,6 +171,7 @@ test("pending sale retries email after webhook is configured without creating a 
       amount_paid: 200000,
       reference: "finpa_ref_email_retry",
       buyer_name: "Buyer One",
+      webhook_secret: "redacted_email_secret",
     });
   } finally {
     global.fetch = originalFetch;

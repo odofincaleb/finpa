@@ -221,6 +221,8 @@ async function deliverPinEmail(sale: PinSale): Promise<"sent" | "pending" | "fai
     const res = await fetch(webhookUrl, {
       method: "POST",
       headers,
+      // Redirect: "follow" strips custom headers on Apps Script; also send secret in body.
+      redirect: "follow",
       body: JSON.stringify({
         product: "finpa",
         to: sale.buyer_email,
@@ -233,6 +235,7 @@ async function deliverPinEmail(sale: PinSale): Promise<"sent" | "pending" | "fai
         amount_paid: sale.amount_paid,
         reference: sale.paystack_reference,
         buyer_name: sale.buyer_name,
+        webhook_secret: emailSecret || undefined,
       }),
     });
     const body = (await res.json().catch(() => ({}))) as { ok?: boolean };

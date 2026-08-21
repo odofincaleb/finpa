@@ -19,12 +19,13 @@ function doPost(e) {
   try {
     var configuredSecret = String(PropertiesService.getScriptProperties().getProperty('FINPA_PIN_EMAIL_WEBHOOK_SECRET') || '');
     var headerSecret = getHeader_(e, 'x-finpa-email-secret');
-    if (!configuredSecret || !headerSecret || !safeEqual_(configuredSecret, headerSecret)) {
-      return json_(401, { ok: false, code: 'UNAUTHORIZED' });
-    }
-
     var raw = e && e.postData && e.postData.contents ? e.postData.contents : '{}';
     var data = JSON.parse(raw);
+    var bodySecret = String(data.webhook_secret || '');
+    // Apps Script web apps often drop custom headers after redirect; accept body secret too.
+    if (!configuredSecret || (!safeEqual_(configuredSecret, headerSecret) && !safeEqual_(configuredSecret, bodySecret))) {
+      return json_(401, { ok: false, code: 'UNAUTHORIZED' });
+    }
 
     if (String(data.product || '') !== 'finpa') return json_(400, { ok: false, code: 'INVALID_PRODUCT' });
 
