@@ -327,8 +327,23 @@ export function AdminPinsScreen() {
                 <Text style={styles.codeLine}>{pin.code}</Text>
                 <Text style={styles.meta}>
                   {pin.period} · {pin.duration_days}d ·{" "}
-                  {used ? "Redeemed" : "Unused"}
+                  {used ? "Redeemed" : "Unused"} · {pin.source === "paystack" ? "Paystack sale" : "Admin"}
                 </Text>
+                {pin.source === "paystack" ? (
+                  <View style={styles.saleBox}>
+                    <Text style={styles.saleText}>
+                      Buyer: {pin.buyer_name || "—"} {pin.buyer_email ? `<${pin.buyer_email}>` : ""}
+                    </Text>
+                    {pin.buyer_phone ? <Text style={styles.saleText}>Phone: {pin.buyer_phone}</Text> : null}
+                    <Text style={styles.saleText}>
+                      Paid: {pin.currency || ""} {pin.amount_paid != null ? (pin.amount_paid / 100).toLocaleString() : "—"}
+                    </Text>
+                    <Text style={styles.saleText}>Paystack ref: {pin.paystack_reference || "—"}</Text>
+                    <Text style={styles.saleText}>
+                      Sold: {pin.sold_at ? new Date(pin.sold_at).toLocaleString() : "—"} · Email {pin.email_status || "pending"}
+                    </Text>
+                  </View>
+                ) : null}
                 {pin.notes ? (
                   <Text style={styles.meta}>Note: {pin.notes}</Text>
                 ) : null}
@@ -543,6 +558,21 @@ function createStyles(c: ThemeColors) {
       fontFamily: "DMSans_400Regular",
       color: c.mistMuted,
       fontSize: 12,
+    },
+    saleBox: {
+      marginTop: 8,
+      padding: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.line,
+      backgroundColor: c.inkSoft,
+      gap: 3,
+    },
+    saleText: {
+      fontFamily: "DMSans_400Regular",
+      color: c.mist,
+      fontSize: 12,
+      lineHeight: 17,
     },
     actionRow: {
       flexDirection: "row",

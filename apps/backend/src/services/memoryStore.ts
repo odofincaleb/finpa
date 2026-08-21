@@ -26,9 +26,39 @@ export type MemoryPin = {
   expires_at: string | null;
   notes: string;
   created_at: string;
+  source?: "admin" | "paystack";
+  buyer_email?: string | null;
+  buyer_name?: string | null;
+  buyer_phone?: string | null;
+  amount_paid?: number | null;
+  currency?: "NGN" | "USD" | null;
+  paystack_reference?: string | null;
+  paystack_status?: string | null;
+  sold_at?: string | null;
+  email_status?: "pending" | "sent" | "failed" | null;
+};
+
+export type MemoryPinSale = {
+  id: string;
+  pin_code: string;
+  plan_id: string;
+  period: SubscriptionPeriod;
+  duration_days: number;
+  buyer_email: string;
+  buyer_name: string;
+  buyer_phone: string;
+  amount_paid: number;
+  currency: "NGN" | "USD";
+  paystack_reference: string;
+  paystack_status: string;
+  source: "paystack";
+  sold_at: string;
+  email_status: "pending" | "sent" | "failed";
+  metadata: Record<string, unknown>;
 };
 
 const pins = new Map<string, MemoryPin>();
+const pinSales = new Map<string, MemoryPinSale>();
 
 export function memoryGetProfile(userId: string, email: string): Profile {
   let profile = profiles.get(userId);
@@ -214,6 +244,44 @@ export function memoryGetPin(code: string): MemoryPin | null {
   return pins.get(code.trim().toUpperCase()) ?? null;
 }
 
+export function memoryGetPinSaleByReference(reference: string): MemoryPinSale | null {
+  return pinSales.get(reference.trim()) ?? null;
+}
+
+export function memoryCreatePinSale(input: Omit<MemoryPinSale, "id" | "pin_code">): MemoryPinSale {
+  const existing = memoryGetPinSaleByReference(input.paystack_reference || "");
+  if (existing) return existing;
+  const code = generateActivationCode();
+  const sale: MemoryPinSale = {
+    ...input,
+    id: randomUUID(),
+    pin_code: code,
+  };
+  const pin: MemoryPin = {
+    code,
+    period: input.period,
+    duration_days: input.duration_days,
+    redeemed_by: null,
+    redeemed_at: null,
+    expires_at: null,
+    notes: `Paystack sale ${input.paystack_reference} ${input.buyer_email}`.trim(),
+    created_at: sale.sold_at,
+    source: "paystack",
+    buyer_email: input.buyer_email,
+    buyer_name: input.buyer_name,
+    buyer_phone: input.buyer_phone,
+    amount_paid: input.amount_paid,
+    currency: input.currency,
+    paystack_reference: input.paystack_reference,
+    paystack_status: input.paystack_status,
+    sold_at: input.sold_at,
+    email_status: input.email_status,
+  };
+  pins.set(code, pin);
+  pinSales.set(input.paystack_reference, sale);
+  return sale;
+}
+
 export function memoryUpdatePin(
   code: string,
   patch: Partial<
@@ -295,4 +363,12 @@ export function memoryRedeemPin(userId: string, code: string): Profile {
     subscription_expires_at: expires,
     activated_at: profile.activated_at ?? new Date().toISOString(),
   });
+}
+
+export function memoryResetForTests() {
+  profiles.clear();
+  transactions.clear();
+  budgets.clear();
+  pins.clear();
+  pinSales.clear();
 }

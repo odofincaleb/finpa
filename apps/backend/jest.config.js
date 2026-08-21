@@ -4,7 +4,7 @@ module.exports = {
   testEnvironment: "node",
   rootDir: __dirname,
   roots: ["<rootDir>/src"],
-  testMatch: ["**/__tests__/**/*.test.ts"],
+  testMatch: ["**/__tests__/**/*.test.ts", "**/services/**/*.test.ts"],
   clearMocks: true,
   transform: {
     "^.+\\.tsx?$": [
