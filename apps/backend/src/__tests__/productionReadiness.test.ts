@@ -37,8 +37,8 @@ describe("health endpoints", () => {
 describe("secure PIN generation", () => {
   it("uses crypto-secure alphanumeric chunks", () => {
     const chunk = randomPinChunk(4);
-    expect(chunk).toMatch(/^[A-Z0-9]{4}$/);
-    expect(generateActivationCode()).toMatch(/^FINPA-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(chunk).toMatch(/^[A-Z2-9]{4}$/);
+    expect(generateActivationCode()).toMatch(/^FINPA-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
   });
 
   it("does not use Math.random in generated codes uniqueness sample", () => {
@@ -127,7 +127,7 @@ describe("OpenRouter free-model enforcement", () => {
 describe("memory PIN create + redeem", () => {
   it("creates crypto-format pins and redeems once", () => {
     const [pin] = memoryCreatePins("monthly", 1, "test");
-    expect(pin.code).toMatch(/^FINPA-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(pin.code).toMatch(/^FINPA-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
     const profile = memoryRedeemPin("u1", pin.code);
     expect(profile.subscription_period).toBe("monthly");
     expect(() => memoryRedeemPin("u2", pin.code)).toThrow("PIN_INVALID");

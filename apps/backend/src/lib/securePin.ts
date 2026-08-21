@@ -1,6 +1,7 @@
 import { randomInt } from "crypto";
 
-const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+/** Exclude 0/1 to avoid O/I ambiguity in spoken/typed activation codes. */
+const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789";
 
 /** Crypto-secure alphanumeric chunk for activation PIN codes. */
 export function randomPinChunk(length = 4): string {
