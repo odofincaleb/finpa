@@ -34,7 +34,8 @@ function doPost(e) {
     var reference = String(data.reference || '').trim();
 
     if (!/^\S+@\S+\.\S+$/.test(to)) return json_(400, { ok: false, code: 'INVALID_EMAIL' });
-    if (!/^FINPA-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(pin)) return json_(400, { ok: false, code: 'INVALID_PIN' });
+    // Accept legacy alphabet (includes I/O) and current alphabet (excludes 0/1/I/O).
+    if (!/^FINPA-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(pin)) return json_(400, { ok: false, code: 'INVALID_PIN' });
 
     var buyerName = String(data.buyer_name || '').trim();
     var planId = String(data.plan_id || '').replace(/_/g, ' ');
