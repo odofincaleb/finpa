@@ -17,6 +17,12 @@ const port = Number(process.env.PORT || 3001);
 
 app.listen(port, "0.0.0.0", () => {
   console.log(`FINPA backend listening on http://0.0.0.0:${port}`);
+  console.log("[finpa-env-check]", {
+    paystackSecretPresent: Boolean(process.env.PAYSTACK_SECRET_KEY),
+    paystackSecretLength: process.env.PAYSTACK_SECRET_KEY?.length || 0,
+    routerSecretPresent: Boolean(process.env.FINPA_PAYSTACK_ROUTER_SECRET),
+    routerSecretLength: process.env.FINPA_PAYSTACK_ROUTER_SECRET?.length || 0,
+  });
   if (!hasSupabase()) {
     memorySeedDemoPin();
     console.warn(
