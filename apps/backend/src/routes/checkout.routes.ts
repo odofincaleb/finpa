@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { AppError } from "../lib/errors";
+import { renderPaystackSuccessPage } from "../lib/paystackSuccessPage";
 import {
   initializePaystackCheckout,
   processVerifiedPaystackPurchase,
@@ -41,7 +42,16 @@ router.post("/paystack/initialize", async (req, res, next) => {
 router.get("/paystack/verify/:reference", async (req, res, next) => {
   try {
     const sale = await processVerifiedPaystackPurchase(req.params.reference);
-    res.json({ sale, pin: sale.pin_code });
+    res.json({
+      ok: true,
+      reference: sale.paystack_reference,
+      email: sale.buyer_email,
+      plan_id: sale.plan_id,
+      period: sale.period,
+      currency: sale.currency,
+      amount_paid: sale.amount_paid,
+      email_status: sale.email_status,
+    });
   } catch (err) {
     next(err);
   }
@@ -52,7 +62,7 @@ router.get("/paystack/success", async (req, res, next) => {
     const reference = String(req.query.reference || "").trim();
     if (!reference) throw new AppError(400, "VALIDATION_ERROR", "Missing Paystack reference");
     const sale = await processVerifiedPaystackPurchase(reference);
-    res.json({ sale, pin: sale.pin_code });
+    res.status(200).type("html").send(renderPaystackSuccessPage(sale));
   } catch (err) {
     next(err);
   }
@@ -78,7 +88,11 @@ router.post("/paystack/webhook", async (req, res, next) => {
     };
     if (event.event === "charge.success" && event.data?.reference) {
       const sale = await processVerifiedPaystackPurchase(event.data.reference);
-      res.json({ ok: true, pin: sale.pin_code });
+      res.json({
+        ok: true,
+        reference: sale.paystack_reference,
+        email_status: sale.email_status,
+      });
       return;
     }
     res.json({ ok: true, ignored: true });

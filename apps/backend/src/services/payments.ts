@@ -214,9 +214,13 @@ async function deliverPinEmail(sale: PinSale): Promise<"sent" | "pending" | "fai
   const webhookUrl = process.env.FINPA_PIN_EMAIL_WEBHOOK_URL;
   if (!webhookUrl) return "pending";
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const emailSecret = process.env.FINPA_PIN_EMAIL_WEBHOOK_SECRET;
+    if (emailSecret) headers["x-finpa-email-secret"] = emailSecret;
+
     const res = await fetch(webhookUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         product: "finpa",
         to: sale.buyer_email,
@@ -224,15 +228,27 @@ async function deliverPinEmail(sale: PinSale): Promise<"sent" | "pending" | "fai
         pin: sale.pin_code,
         plan_id: sale.plan_id,
         period: sale.period,
+        duration_days: sale.duration_days,
         currency: sale.currency,
         amount_paid: sale.amount_paid,
         reference: sale.paystack_reference,
+        buyer_name: sale.buyer_name,
       }),
     });
-    return res.ok ? "sent" : "failed";
+    const body = (await res.json().catch(() => ({}))) as { ok?: boolean };
+    if (res.ok && body.ok === true) return "sent";
+    return "failed";
   } catch {
     return "failed";
   }
+}
+
+async function deliverPinEmailAndPersist(sale: PinSale): Promise<PinSale> {
+  if (sale.email_status === "sent") return sale;
+  const email_status = await deliverPinEmail(sale);
+  if (email_status === sale.email_status) return sale;
+  await updatePaystackPinSaleEmailStatus(sale.paystack_reference, email_status);
+  return { ...sale, email_status };
 }
 
 export async function processVerifiedPaystackPurchase(
@@ -240,7 +256,7 @@ export async function processVerifiedPaystackPurchase(
   verifier = verifyPaystackTransaction,
 ): Promise<PinSale> {
   const existing = await getPaystackPinSaleByReference(reference);
-  if (existing) return existing;
+  if (existing) return deliverPinEmailAndPersist(existing);
 
   const tx = await verifier(reference);
   if (tx.status !== "success") throw new AppError(400, "PAYMENT_NOT_SUCCESSFUL", "Payment is not successful");
@@ -270,10 +286,7 @@ export async function processVerifiedPaystackPurchase(
     email_status: "pending",
   });
 
-  const email_status = await deliverPinEmail(sale);
-  if (email_status === sale.email_status) return sale;
-  await updatePaystackPinSaleEmailStatus(reference, email_status);
-  return { ...sale, email_status };
+  return deliverPinEmailAndPersist(sale);
 }
 
 export function verifyPaystackWebhookSignature(rawBody: Buffer, signature: string | undefined): boolean {

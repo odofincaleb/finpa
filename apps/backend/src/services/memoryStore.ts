@@ -248,6 +248,18 @@ export function memoryGetPinSaleByReference(reference: string): MemoryPinSale | 
   return pinSales.get(reference.trim()) ?? null;
 }
 
+export function memoryUpdatePinSaleEmailStatus(
+  reference: string,
+  email_status: "pending" | "sent" | "failed",
+): void {
+  const key = reference.trim();
+  const sale = pinSales.get(key);
+  if (!sale) return;
+  sale.email_status = email_status;
+  const pin = pins.get(sale.pin_code);
+  if (pin) pin.email_status = email_status;
+}
+
 export function memoryCreatePinSale(input: Omit<MemoryPinSale, "id" | "pin_code">): MemoryPinSale {
   const existing = memoryGetPinSaleByReference(input.paystack_reference || "");
   if (existing) return existing;

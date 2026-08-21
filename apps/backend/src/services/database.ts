@@ -13,6 +13,7 @@ import {
   memoryGetBudgets,
   memoryGetPin,
   memoryGetPinSaleByReference,
+  memoryUpdatePinSaleEmailStatus,
   memoryGetProfile,
   memoryDeleteTransaction,
   memoryInsertTransactions,
@@ -564,7 +565,10 @@ export async function updatePaystackPinSaleEmailStatus(
   reference: string,
   email_status: "pending" | "sent" | "failed",
 ): Promise<void> {
-  if (!hasSupabase()) return;
+  if (!hasSupabase()) {
+    memoryUpdatePinSaleEmailStatus(reference, email_status);
+    return;
+  }
   const { error } = await getSupabase()
     .from("pin_sales")
     .update({ email_status })
