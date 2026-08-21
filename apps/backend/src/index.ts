@@ -22,6 +22,7 @@ app.listen(port, "0.0.0.0", () => {
     paystackSecretLength: process.env.PAYSTACK_SECRET_KEY?.length || 0,
     routerSecretPresent: Boolean(process.env.FINPA_PAYSTACK_ROUTER_SECRET),
     routerSecretLength: process.env.FINPA_PAYSTACK_ROUTER_SECRET?.length || 0,
+    callbackUrlPresent: Boolean(process.env.FINPA_PAYSTACK_CALLBACK_URL),
   });
   if (!hasSupabase()) {
     memorySeedDemoPin();
