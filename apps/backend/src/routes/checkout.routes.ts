@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
-import { AppError } from "../lib/errors";
-import { renderPaystackSuccessPage } from "../lib/paystackSuccessPage";
+import { AppError, type ErrorCode } from "../lib/errors";
+import {
+  renderPaystackFailurePage,
+  renderPaystackSuccessPage,
+} from "../lib/paystackSuccessPage";
 import {
   initializePaystackCheckout,
   processVerifiedPaystackPurchase,
@@ -11,6 +14,28 @@ import {
 import rateLimit from "express-rate-limit";
 
 const router = Router();
+
+const EXPECTED_PAYMENT_ERROR_CODES: ErrorCode[] = [
+  "VALIDATION_ERROR",
+  "INVALID_PLAN",
+  "PAYSTACK_VERIFY_FAILED",
+  "PAYMENT_NOT_SUCCESSFUL",
+  "PAYMENT_REFERENCE_MISMATCH",
+  "PAYMENT_PRODUCT_MISMATCH",
+  "PAYMENT_AMOUNT_MISMATCH",
+  "PAYSTACK_NOT_CONFIGURED",
+];
+
+function isExpectedPaymentError(err: unknown): err is AppError {
+  return err instanceof AppError && EXPECTED_PAYMENT_ERROR_CODES.includes(err.code);
+}
+
+function mapPaymentErrorStatus(err: AppError): number {
+  if (err.code === "PAYSTACK_NOT_CONFIGURED") return 502;
+  if (err.code === "PAYSTACK_VERIFY_FAILED") return 404;
+  if (err.status >= 400 && err.status < 600) return err.status;
+  return 400;
+}
 
 const checkoutSchema = z.object({
   plan_id: z.string().min(1).max(80),
@@ -58,13 +83,44 @@ router.get("/paystack/verify/:reference", async (req, res, next) => {
 });
 
 router.get("/paystack/success", async (req, res, next) => {
+  const reference = String(req.query.reference || "").trim();
+  if (!reference) {
+    return res.status(400).type("html").send(
+      renderPaystackFailurePage({
+        title: "Payment reference missing",
+        message: "We could not find a Paystack reference to verify this FINPA payment.",
+        supportCode: "VALIDATION_ERROR",
+      }),
+    );
+  }
+
   try {
-    const reference = String(req.query.reference || "").trim();
-    if (!reference) throw new AppError(400, "VALIDATION_ERROR", "Missing Paystack reference");
     const sale = await processVerifiedPaystackPurchase(reference);
-    res.status(200).type("html").send(renderPaystackSuccessPage(sale));
+    return res.status(200).type("html").send(renderPaystackSuccessPage(sale));
   } catch (err) {
-    next(err);
+    if (isExpectedPaymentError(err)) {
+      return res.status(mapPaymentErrorStatus(err)).type("html").send(
+        renderPaystackFailurePage({
+          title: "We could not verify this payment",
+          message:
+            "This Paystack reference is invalid, expired, unpaid, or not linked to a FINPA purchase. If you were debited, contact Fidean support with the reference below.",
+          reference,
+          supportCode: err.code,
+        }),
+      );
+    }
+
+    // Customer-facing route: avoid Cloudflare/generic 502 for unexpected verify failures.
+    console.error("[finpa] paystack success unexpected error", err);
+    return res.status(502).type("html").send(
+      renderPaystackFailurePage({
+        title: "We could not verify this payment",
+        message:
+          "FINPA could not complete payment verification right now. If you were debited, contact Fidean support with the reference below.",
+        reference,
+        supportCode: "INTERNAL",
+      }),
+    );
   }
 });
 

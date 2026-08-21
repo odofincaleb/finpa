@@ -6,12 +6,17 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0B1210",
+    "androidNavigationBar": {
+      "backgroundColor": "#0B1210",
+      "barStyle": "light-content"
+    },
     "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0A192F"
+      "backgroundColor": "#0B1210"
     },
     "ios": {
       "supportsTablet": true,
@@ -23,13 +28,13 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0A192F",
+        "backgroundColor": "#0B1210",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "app.finpa.mobile",
-      "versionCode": 7,
+      "versionCode": 8,
       "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.RECORD_AUDIO"
@@ -41,6 +46,14 @@
     "plugins": [
       "expo-font",
       "expo-sharing",
+      "expo-system-ui",
+      [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": false,
+          "style": "light"
+        }
+      ],
       [
         "expo-speech-recognition",
         {

@@ -7,7 +7,10 @@ import {
 } from "./payments";
 import { listPins } from "./database";
 import { memoryResetForTests } from "./memoryStore";
-import { renderPaystackSuccessPage } from "../lib/paystackSuccessPage";
+import {
+  renderPaystackFailurePage,
+  renderPaystackSuccessPage,
+} from "../lib/paystackSuccessPage";
 
 const PIN_RE = /^FINPA-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/;
 
@@ -245,6 +248,26 @@ test("success page HTML confirms payment without exposing PIN fields", () => {
   expect(html).not.toContain('"pin"');
   expect(html).not.toContain("pin_code");
   expect(html).not.toContain('"sale"');
+});
+
+test("failure page HTML is branded and never exposes PIN fields", () => {
+  const html = renderPaystackFailurePage({
+    title: "We could not verify this payment",
+    message:
+      "This Paystack reference is invalid, expired, unpaid, or not linked to a FINPA purchase.",
+    reference: "finpa_fake_invalid_reference",
+    supportCode: "PAYSTACK_VERIFY_FAILED",
+  });
+
+  expect(html).toContain("We could not verify this payment");
+  expect(html).toContain("finpa_fake_invalid_reference");
+  expect(html).toContain("invalid or expired");
+  expect(html).toContain("Contact support");
+  expect(html).not.toContain("pin_code");
+  expect(html).not.toContain('"pin"');
+  expect(html).not.toContain("PAYSTACK_SECRET");
+  expect(html).not.toContain("Error:");
+  expect(html).not.toContain("at processVerifiedPaystackPurchase");
 });
 
 test("unverified or mismatched Paystack transaction never issues a PIN", async () => {
